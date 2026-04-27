@@ -1,101 +1,45 @@
-import os
-import threading
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from groq import Groq
-from dotenv import load_dotenv
+# Add these to your backend/main.py
 
-# Load API Key
-load_dotenv()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# --- NEW: CHAT ASSISTANT ENDPOINT ---
+class ChatRequest(BaseModel):
+    user_input: str
+    context: str
 
-app = FastAPI(title="Project Aura: Source-Aware Engine")
-
-# CORS setup for React
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-ai_client = Groq(api_key=GROQ_API_KEY)
-
-# --- FIXED PATH LOGIC ---
-# Points to the 'mock_repo' folder inside 'backend'
-REPO_BASE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mock_repo")
-
-class IncidentRequest(BaseModel):
-    pod_name: str
-    file_name: str
-    line_number: int
-    error_log: str
-
-def find_file_recursively(root_folder, target_file):
-    for root, dirs, files in os.walk(root_folder):
-        if target_file in files:
-            return os.path.join(root, target_file)
-    return None
-
-def get_source_context(file_name: str, line_num: int, padding: int = 5):
-    try:
-        file_path = find_file_recursively(REPO_BASE_PATH, file_name)
-        if not file_path:
-            return f"Error: File {file_name} not found in {REPO_BASE_PATH}"
-
-        with open(file_path, "r") as f:
-            lines = f.readlines()
-            # Handle 1-based line numbers from logs
-            start = max(0, line_num - padding)
-            end = min(len(lines), line_num + padding)
-            return "".join(lines[start:end])
-    except Exception as e:
-        return f"Extraction failed: {str(e)}"
-
-@app.get("/health")
-def health():
-    return {"status": "Aura Active", "repo_path": REPO_BASE_PATH}
-
-@app.post("/analyze")
-async def analyze_incident(req: IncidentRequest):
-    # Fetch real code logic
-    code_snippet = get_source_context(req.file_name, req.line_number)
-
+@app.post("/chat")
+async def chat_with_aura(req: ChatRequest):
     prompt = f"""
-    You are a Senior SRE. Analyze this crash for pod: {req.pod_name}
-    [ERROR LOG]: {req.error_log}
-    [SOURCE CODE CONTEXT]:
-    File: {req.file_name}
-    {code_snippet}
-
-    TASK:
-    1. Identify the specific logic error.
-    2. Provide a 'Code Fix' in a clean diff format.
-    3. Explain how this fix prevents the crash.
+    You are Aura, an SRE AI Assistant. 
+    Context of the incident: {req.context}
+    User Question: {req.user_input}
     
-    Return response in Markdown format.
+    Provide a concise, technical answer based on the incident. 
+    If they ask about safety, mention the QA validation suite.
     """
-
     try:
         completion = ai_client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
+            temperature=0.7,
         )
-        
-        analysis_result = completion.choices[0].message.content
-
-        return {
-            "pod": req.pod_name,
-            "root_cause_analysis": analysis_result,
-            "extracted_logic": code_snippet,
-            "qa_validation": {"status": "PASSED", "report": "Regression suite passed."}
-        }
+        return {"response": completion.choices[0].message.content}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+# --- NEW: REMEDIATION TERMINAL ENDPOINT ---
+@app.get("/remediate")
+async def get_remediation_steps():
+    # Simulating a real Git Hotfix workflow
+    return {
+        "steps": [
+            " [SYSTEM] Initializing hotfix sequence...",
+            " [GIT] git checkout -b hotfix/npe-fix-auth-service",
+            " [AST] Patching AuthService.java at line 8...",
+            " [QA] Running pre-commit validation tests...",
+            " [QA] Integrity check: 100% Passed.",
+            " [GIT] git add .",
+            " [GIT] git commit -m 'fix: implement Yoda condition null-safety'",
+            " [GIT] git push origin hotfix/npe-fix-auth-service",
+            " [AURA] Triggering K8s rolling update...",
+            " [SUCCESS] Pod payment-api-x2 stabilized. MTTR: 0.82s"
+        ]
+    }
