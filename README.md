@@ -24,7 +24,7 @@
 
 ---
 
-## 🚩 The Problem: The "Context Gap"
+## 🚩 The Problem : The "Context Gap"
 
 Traditional monitoring tools (Datadog, Prometheus) tell you *that* a service has failed — e.g., `CrashLoopBackOff` — but not *why* in the context of your code. Engineers waste hours:
 
