@@ -5,35 +5,22 @@ import {
   ShieldCheck, ArrowLeft, Loader2, Search, 
   CheckCircle2, Zap, Fingerprint, Activity,
   GitBranch, ShieldAlert, ChevronRight,
-  Database, Timer, GitPullRequest, Laptop
+  Database, Timer, GitPullRequest, Laptop, ExternalLink
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 
 const Incidents = () => {
-  const navigate = useNavigate();
   const [analysisStep, setAnalysisStep] = useState(0);
   const [isErrorActive, setIsErrorActive] = useState(false);
   const [analysisData, setAnalysisData] = useState<any>(null);
   const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  
+  // --- REMEDIATION STATES ---
   const [isRemediating, setIsRemediating] = useState(false);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
-
-  const gitCommands = [
-    "> aura-cli initiate --hotfix system-auth",
-    "📦 Preparing local environment for patch injection...",
-    "> git checkout -b fix/npe-logic-142",
-    "Switched to a new branch 'fix/npe-logic-142'",
-    "> git apply patches/auth_handshake_npe.patch",
-    "Applied patch to AuthService.java successfully.",
-    "> git add src/main/java/io/aura/AuthService.java",
-    "> git commit -m 'fix: implement Yoda condition null safety'",
-    "[fix/npe-142 882af1] fix: implement Yoda condition null safety",
-    "> git push origin fix/npe-logic-142",
-    "Pushed to origin/fix/npe-logic-142",
-    "🚀 Aura_Engine: Triggering Cluster Blue/Green Rollout...",
-    "✅ Deployment Successful. Pod stabilized."
-  ];
+  const [remediationComplete, setRemediationComplete] = useState(false);
 
   const runInvestigation = async () => {
     setIsErrorActive(true);
@@ -44,32 +31,64 @@ const Incidents = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          pod_name: sessionStorage.getItem('targetService') || "payment-api",
+          pod_name: sessionStorage.getItem('targetService') || "payment-api-x2",
           file_name: "AuthService.java",
           line_number: 8,
-          error_log: "java.lang.NullPointerException"
+          error_log: "java.lang.NullPointerException: Cannot invoke String.equals(Object) because token is null"
         })
       });
       const data = await response.json();
       setAnalysisData(data);
       setAnalysisStep(3); 
       setTimeout(() => setAnalysisStep(4), 1000);
-    } catch (error) { console.error("Backend offline"); }
+      setChatMessages([{ 
+        type: 'bot', 
+        text: `Analysis complete. Logic failure localized in ${data.method_identified}. Source-aware patch generated.` 
+      }]);
+    } catch (error) { 
+      console.error("Backend offline"); 
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!chatInput.trim()) return;
+    const userMsg = chatInput;
+    setChatInput('');
+    setChatMessages(prev => [...prev, { type: 'user', text: userMsg }]);
+    try {
+      const res = await fetch("http://localhost:8000/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ user_input: userMsg, context: analysisData?.root_cause_analysis || "" })
+      });
+      const data = await res.json();
+      setChatMessages(prev => [...prev, { type: 'bot', text: data.response }]);
+    } catch (e) {
+      setChatMessages(prev => [...prev, { type: 'bot', text: "Error: Neural sync failed." }]);
+    }
   };
 
   const handleRemediation = async () => {
     setIsRemediating(true);
-    setTerminalLines([]);
-    for (let i = 0; i < gitCommands.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 600));
-      setTerminalLines(prev => [...prev, gitCommands[i]]);
+    setTerminalLines(["> Initializing Aura Subspace Remediation..."]);
+    try {
+      const res = await fetch("http://localhost:8000/remediate");
+      const data = await res.json();
+      if (data.status === "SUCCESS") {
+        for (let i = 0; i < data.steps.length; i++) {
+          await new Promise(resolve => setTimeout(resolve, 600));
+          setTerminalLines(prev => [...prev, data.steps[i]]);
+        }
+        // Success without redirection
+        setRemediationComplete(true);
+        sessionStorage.setItem('activeIncident', 'false');
+      } else {
+        setTerminalLines(prev => [...prev, "❌ ERROR: " + data.steps[0]]);
+        setIsRemediating(false);
+      }
+    } catch (error) {
+      setTerminalLines(prev => [...prev, "❌ CRITICAL: Connection Lost."]);
     }
-    setTimeout(() => {
-      sessionStorage.setItem('activeIncident', 'false');
-      sessionStorage.removeItem('targetService');
-      alert("SYSTEM_HEALED: Automated hotfix deployed to Production.");
-      navigate('/dashboard');
-    }, 2000);
   };
 
   useEffect(() => {
@@ -80,7 +99,7 @@ const Incidents = () => {
 
   if (!isErrorActive) {
     return (
-      <div className="pt-32 px-10 min-h-screen flex flex-col items-center justify-center relative overflow-hidden">
+      <div className="pt-32 px-10 min-h-screen flex flex-col items-center justify-center relative overflow-hidden bg-terminal-grid">
          <motion.div animate={{ scale: [1, 1.2, 1], opacity: [0.1, 0.2, 0.1] }} transition={{ duration: 4, repeat: Infinity }} className="absolute w-[800px] h-[800px] bg-[#bef35e]/5 rounded-full blur-3xl pointer-events-none" />
          <div className="relative z-10 text-center space-y-12">
             <Search className="text-[#bef35e] mx-auto animate-pulse" size={60} />
@@ -94,19 +113,41 @@ const Incidents = () => {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pt-32 px-10 pb-20 max-w-[1700px] mx-auto min-h-screen">
       
-      {/* TOP METRICS GRID */}
+      {/* 1. HUD METRICS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
         <IncidentMetric label="Severity" value="CRITICAL" color="text-red-500" icon={<ShieldAlert size={14}/>}/>
-        <IncidentMetric label="Analysis_Speed" value="0.82s" color="text-[#bef35e]" icon={<Zap size={14}/>}/>
-        <IncidentMetric label="AI_Confidence" value="98.4%" color="text-indigo-400" icon={<Cpu size={14}/>}/>
-        <IncidentMetric label="Verification" value="QA_OK" color="text-emerald-400" icon={<CheckCircle2 size={14}/>}/>
+        <IncidentMetric label="MTTR_Target" value="0.82s" color="text-[#bef35e]" icon={<Zap size={14}/>}/>
+        <IncidentMetric label="AI_Logic_Confidence" value="98.4%" color="text-indigo-400" icon={<Cpu size={14}/>}/>
+        <IncidentMetric label="Compliance" value={remediationComplete ? "STABILIZED" : "Verified"} color="text-emerald-400" icon={<ShieldCheck size={14}/>}/>
+      </div>
+
+      <div className="flex justify-between items-start mb-12">
+        <div className="space-y-4">
+          <Link to="/dashboard" className="text-[#bef35e] text-[10px] font-black uppercase tracking-[0.3em] flex items-center gap-2 hover:opacity-70 transition-all font-mono">
+            <ArrowLeft size={14} /> Back_To_Console
+          </Link>
+          <h2 className="text-6xl font-black tracking-tighter text-white uppercase italic leading-none">Investigation_Lab</h2>
+        </div>
+        <div className="flex gap-6 pt-10">
+          {['Intercept', 'Synthesize', 'Reason', 'Validate'].map((label, i) => (
+            <div key={label} className="flex flex-col items-end gap-2">
+                <div className={`h-1 w-24 rounded-full transition-all duration-1000 ${analysisStep >= i+1 ? 'bg-[#bef35e] shadow-[0_0_15px_#bef35e]' : 'bg-white/5'}`} />
+                <span className={`text-[8px] font-bold uppercase tracking-tighter ${analysisStep >= i+1 ? 'text-[#bef35e]' : 'text-zinc-700'}`}>{label}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="grid grid-cols-12 gap-8">
+        
+        {/* MAIN ANALYSIS CONTENT */}
         <div className="col-span-12 lg:col-span-8 space-y-8">
           <AnimatePresence mode="wait">
             {analysisStep < 3 ? (
-              <div className="aura-card-modern p-40 flex flex-col items-center justify-center text-center"><Loader2 className="text-[#bef35e] animate-spin mb-6" size={60} /><p className="font-mono text-sm uppercase tracking-[0.5em] text-[#bef35e] animate-pulse">Running_AI_Diagnostic_Cycles...</p></div>
+              <div className="aura-card-modern p-40 flex flex-col items-center justify-center text-center bg-black/40 border-white/5">
+                <Loader2 className="text-[#bef35e] animate-spin mb-6" size={60} />
+                <p className="font-mono text-sm uppercase tracking-[0.5em] text-[#bef35e] animate-pulse">Running_AI_Diagnostic_Cycles...</p>
+              </div>
             ) : (
               <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="aura-card-modern p-10 bg-gradient-to-br from-[#bef35e]/5 to-transparent border-[#bef35e]/20">
                 <div className="flex items-center gap-3 mb-10 border-b border-white/5 pb-6">
@@ -121,34 +162,57 @@ const Incidents = () => {
 
             {analysisStep >= 4 && (
               <div className="grid grid-cols-1 gap-6">
-                <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="aura-card-modern p-0 overflow-hidden border-[#bef35e]/20">
-                    <div className="bg-zinc-900/80 px-8 py-5 border-b border-white/5 flex justify-between items-center font-mono text-[10px]">
-                      <span className="font-black text-zinc-400 uppercase flex items-center gap-2"><Code size={14} /> Context_Link: AuthService.java</span>
-                      <span className="px-4 py-1.5 rounded-full bg-[#bef35e]/10 text-[#bef35e] font-black">QA_PASSED</span>
+                <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="aura-card-modern p-0 overflow-hidden border-[#bef35e]/20 group">
+                    <div className="bg-zinc-900/80 px-8 py-6 border-b border-white/5 flex justify-between items-center font-mono text-[10px]">
+                      <span className="font-black text-zinc-400 uppercase flex items-center gap-2"><Code size={14} /> Source_Link: AuthService.java</span>
+                      <span className="px-4 py-1.5 rounded-full bg-[#bef35e]/10 text-[#bef35e] font-black uppercase tracking-widest">QA_SECURED</span>
                     </div>
-                    <div className="p-10 font-mono text-xs leading-relaxed bg-black/60 text-[#bef35e]/70">
+                    <div className="p-10 font-mono text-xs leading-relaxed bg-black/60 text-[#bef35e]/70 overflow-x-auto">
                       <pre><code>{analysisData?.extracted_logic}</code></pre>
                     </div>
-                    {!isRemediating && (
-                        <div className="p-8 bg-white/[0.01] border-t border-white/5">
-                            <button onClick={handleRemediation} className="w-full bg-[#bef35e] text-black py-5 rounded-2xl font-black uppercase text-xs shadow-[0_0_50px_rgba(190,243,94,0.3)] hover:scale-[1.01] transition-all">Initialize Hotfix Remediation</button>
-                        </div>
-                    )}
+
+                    {/* ACTION AREA */}
+                    <div className="p-8 bg-white/[0.01] border-t border-white/5">
+                        {!remediationComplete ? (
+                            <button 
+                                onClick={handleRemediation} 
+                                disabled={isRemediating}
+                                className="w-full bg-[#bef35e] text-black py-5 rounded-2xl font-black uppercase text-xs shadow-[0_0_50px_rgba(190,243,94,0.3)] hover:scale-[1.01] transition-all flex items-center justify-center gap-3 font-sans disabled:opacity-50"
+                            >
+                                {isRemediating ? "Remediating..." : "Apply Hotfix & Auto-Heal"} <Zap size={16} fill="currentColor" />
+                            </button>
+                        ) : (
+                            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="p-6 bg-[#bef35e]/10 border border-[#bef35e]/30 rounded-2xl flex items-center justify-between">
+                                <div className="flex items-center gap-4">
+                                    <CheckCircle2 className="text-[#bef35e]" size={24} />
+                                    <div>
+                                        <p className="text-[#bef35e] font-black uppercase text-xs">Fix_Committed_Successfully</p>
+                                        <p className="text-zinc-500 text-[10px] font-mono">Aura has pushed the Yoda-condition patch to origin/fix-branch.</p>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={() => window.open(analysisData?.qa_validation?.report_url || "https://github.com/Xynash/aura-target-app/pulls", "_blank")}
+                                    className="bg-[#bef35e] text-black px-5 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2"
+                                >
+                                    Check Branch <ExternalLink size={12} />
+                                </button>
+                            </motion.div>
+                        )}
+                    </div>
                 </motion.div>
 
-                {/* INTEGRATED TERMINAL */}
                 <AnimatePresence>
                   {isRemediating && (
-                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="aura-card-modern bg-[#020617] border-white/10 overflow-hidden">
-                       <div className="bg-white/5 px-6 py-3 border-b border-white/5 flex justify-between items-center font-mono text-[9px] uppercase tracking-widest">
-                          <span className="flex items-center gap-2"><Terminal size={12}/> git_remediation_shell</span>
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="aura-card-modern bg-[#020617] border-white/10 overflow-hidden shadow-2xl">
+                       <div className="bg-white/5 px-6 py-3 border-b border-white/5 flex justify-between items-center">
+                          <span className="font-mono text-[9px] text-zinc-500 uppercase tracking-widest flex items-center gap-2"><Terminal size={12}/> git_remediation_shell</span>
                           <div className="flex gap-1.5"><div className="w-2 h-2 rounded-full bg-red-500/20" /><div className="w-2 h-2 rounded-full bg-[#bef35e]" /></div>
                        </div>
                        <div className="p-6 font-mono text-[10px] space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
                           {terminalLines.map((line, i) => (
-                            <div key={i} className={line.startsWith('>') ? 'text-[#bef35e]' : line.startsWith('✅') ? 'text-[#bef35e] font-bold' : 'text-zinc-500'}>{line}</div>
+                            <div key={i} className={line.startsWith('>') ? 'text-[#bef35e]' : line.includes('✅') || line.includes('SUCCESS') ? 'text-[#bef35e] font-bold' : 'text-zinc-500'}>{line}</div>
                           ))}
-                          <div className="w-2 h-3 bg-[#bef35e] animate-pulse inline-block ml-1" />
+                          {!remediationComplete && <div className="w-2 h-3 bg-[#bef35e] animate-pulse inline-block ml-1" />}
                        </div>
                     </motion.div>
                   )}
@@ -160,25 +224,45 @@ const Incidents = () => {
 
         {/* SIDEBAR */}
         <div className="col-span-12 lg:col-span-4 space-y-6">
-          <div className="aura-card-modern flex flex-col min-h-[600px] border-white/5 bg-black/40">
-            <div className="p-6 border-b border-white/5"><h3 className="text-[10px] font-black uppercase text-zinc-500 flex items-center gap-2"><Terminal size={14} /> Neural_Assistant</h3></div>
+          <div className="aura-card-modern flex flex-col min-h-[600px] border-white/5">
+            <div className="p-6 border-b border-white/5 bg-white/[0.01] flex justify-between items-center">
+                <h3 className="text-[10px] font-black uppercase text-zinc-500 flex items-center gap-2 tracking-widest"><Terminal size={14} /> Neural_Assistant</h3>
+                <span className="text-[8px] font-bold text-[#bef35e] animate-pulse">Live_Sync</span>
+            </div>
             <div className="flex-1 p-8 space-y-6 overflow-y-auto font-mono text-[11px] custom-scrollbar">
-                <div className="p-5 rounded-2xl bg-white/5 border border-white/5 text-zinc-400 italic">I have pinpointed the NullPointer on Line 8. The AuthService fails when the token object is null. I recommend Yoda conditions for safety.</div>
-                {analysisData?.qa_validation && (
-                    <div className="p-5 rounded-2xl bg-[#bef35e]/5 border border-[#bef35e]/10 text-[#bef35e] font-bold">[QA_VERDICT]: Regression tests passed. Fix is low-risk.</div>
+                {chatMessages.map((msg, i) => (
+                    <div key={i} className={`flex ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[90%] p-5 rounded-2xl ${msg.type === 'bot' ? 'bg-white/5 border border-white/5 text-zinc-300 shadow-lg shadow-black/20' : 'bg-[#bef35e] text-black font-bold'}`}>
+                            <div className="flex items-center gap-2 mb-2 opacity-40 uppercase text-[8px] font-black tracking-widest">{msg.type === 'bot' ? 'Aura_Core' : 'SRE_Operator'}</div>
+                            {msg.text}
+                        </div>
+                    </div>
+                ))}
+                {remediationComplete && (
+                    <div className="p-5 rounded-2xl bg-[#bef35e]/5 border border-[#bef35e]/10 text-[#bef35e] text-[10px] font-bold animate-bounce">
+                       [SYSTEM_MSG]: Hotfix branch is staged. Awaiting your final merge on GitHub.
+                    </div>
                 )}
             </div>
-            <div className="p-6 bg-black/40 border-t border-white/5 flex gap-3">
-                <input type="text" placeholder="Ask Aura about the logic..." className="flex-1 bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-xs focus:border-[#bef35e] outline-none transition-all" />
-                <button className="p-4 bg-[#bef35e] text-black rounded-xl"><Send size={16}/></button>
+            <div className="p-6 bg-black/40 border-t border-white/5">
+                <input 
+                    type="text" 
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+                    placeholder={analysisStep < 4 ? "Core analyzing..." : "Ask Aura about the fix..."} 
+                    disabled={analysisStep < 4}
+                    className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-xs focus:border-[#bef35e] outline-none transition-all placeholder:text-zinc-800" 
+                />
             </div>
           </div>
+          
           <div className="aura-card-modern p-8 space-y-6 border-white/5">
-             <h4 className="text-[10px] font-black uppercase text-zinc-500 flex items-center gap-2"><GitBranch size={14}/> Hotfix_Pipeline</h4>
+             <h4 className="text-[10px] font-black uppercase text-zinc-500 flex items-center gap-2 tracking-widest"><GitBranch size={14}/> Git_Remediation_Path</h4>
              <div className="space-y-6">
-                <PipelineStep num="01" label="Hotfix Branch" active={isRemediating} />
-                <PipelineStep num="02" label="Sync Patches" active={terminalLines.length > 8} />
-                <PipelineStep num="03" label="Stabilize K8s" active={terminalLines.length > 12} />
+                <PipelineStep num="01" label="Create Hotfix Branch" active={isRemediating} />
+                <PipelineStep num="02" label="Sync Source Patch" active={terminalLines.length > 8} />
+                <PipelineStep num="03" label="Awaiting Approval" active={remediationComplete} />
              </div>
           </div>
         </div>
@@ -189,10 +273,7 @@ const Incidents = () => {
 
 const IncidentMetric = ({ label, value, color, icon }: any) => (
     <div className="aura-card-modern p-5 flex items-center justify-between border-white/5 bg-black/20">
-        <div>
-            <p className="text-[8px] font-black text-zinc-600 uppercase tracking-widest mb-1">{label}</p>
-            <p className={`text-xl font-black italic tracking-tighter ${color}`}>{value}</p>
-        </div>
+        <div><p className="text-[8px] font-black text-zinc-600 uppercase tracking-widest mb-1">{label}</p><p className={`text-xl font-black italic tracking-tighter ${color}`}>{value}</p></div>
         <div className="p-2.5 bg-white/5 rounded-lg text-zinc-600">{icon}</div>
     </div>
 );
