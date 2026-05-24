@@ -5,12 +5,13 @@ import {
   ShieldCheck, ArrowLeft, Loader2, Search, 
   CheckCircle2, Zap, Fingerprint, Activity,
   GitBranch, ShieldAlert, ChevronRight,
-  Database, Timer, GitPullRequest, Laptop, ExternalLink
+  Database, Timer, ExternalLink
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 
 const Incidents = () => {
+  const navigate = useNavigate();
   const [analysisStep, setAnalysisStep] = useState(0);
   const [isErrorActive, setIsErrorActive] = useState(false);
   const [analysisData, setAnalysisData] = useState<any>(null);
@@ -22,6 +23,7 @@ const Incidents = () => {
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
   const [remediationComplete, setRemediationComplete] = useState(false);
 
+  // 1. DYNAMIC INVESTIGATION
   const runInvestigation = async () => {
     setIsErrorActive(true);
     setAnalysisStep(1); 
@@ -34,22 +36,21 @@ const Incidents = () => {
           pod_name: sessionStorage.getItem('targetService') || "payment-api-x2",
           file_name: "AuthService.java",
           line_number: 8,
-          error_log: "java.lang.NullPointerException: Cannot invoke String.equals(Object) because token is null"
+          error_log: "java.lang.NullPointerException"
         })
       });
       const data = await response.json();
       setAnalysisData(data);
       setAnalysisStep(3); 
       setTimeout(() => setAnalysisStep(4), 1000);
-      setChatMessages([{ 
-        type: 'bot', 
-        text: `Analysis complete. Logic failure localized in ${data.method_identified}. Source-aware patch generated.` 
-      }]);
+      setChatMessages([{ type: 'bot', text: `Neural link established via ${data.active_node}. Analysis complete. Source-aware patch generated.` }]);
     } catch (error) { 
-      console.error("Backend offline"); 
+        console.error("Backend offline"); 
+        setIsErrorActive(false);
     }
   };
 
+  // 2. CHATBOT
   const handleSendMessage = async () => {
     if (!chatInput.trim()) return;
     const userMsg = chatInput;
@@ -63,61 +64,59 @@ const Incidents = () => {
       });
       const data = await res.json();
       setChatMessages(prev => [...prev, { type: 'bot', text: data.response }]);
-    } catch (e) {
-      setChatMessages(prev => [...prev, { type: 'bot', text: "Error: Neural sync failed." }]);
-    }
+    } catch (e) { console.error("Chat Error"); }
   };
 
+  // 3. REAL REMEDIATION (CRASH-PROOF VERSION)
   const handleRemediation = async () => {
     setIsRemediating(true);
-    setTerminalLines(["> Initializing Aura Subspace Remediation..."]);
+    setTerminalLines(["> Initializing Aura Subspace Remediation Protocol..."]);
     try {
       const res = await fetch("http://localhost:8000/remediate");
       const data = await res.json();
-      if (data.status === "SUCCESS") {
-        for (let i = 0; i < data.steps.length; i++) {
+
+      if (data && data.status === "SUCCESS" && data.steps) {
+        // Safe Loop: Check if steps exist before mapping
+        for (const step of data.steps) {
           await new Promise(resolve => setTimeout(resolve, 600));
-          setTerminalLines(prev => [...prev, data.steps[i]]);
+          setTerminalLines(prev => [...prev, step]);
         }
-        // Success without redirection
         setRemediationComplete(true);
         sessionStorage.setItem('activeIncident', 'false');
       } else {
-        setTerminalLines(prev => [...prev, "❌ ERROR: " + data.steps[0]]);
+        setTerminalLines(prev => [...prev, "❌ ERROR: GitHub API sequence failed."]);
         setIsRemediating(false);
       }
     } catch (error) {
-      setTerminalLines(prev => [...prev, "❌ CRITICAL: Connection Lost."]);
+      console.error("Remediation Error:", error);
+      setTerminalLines(prev => [...prev, "❌ CRITICAL: Backend link failed during patch."]);
     }
   };
 
   useEffect(() => {
-    if (sessionStorage.getItem('activeIncident') === 'true') {
-      runInvestigation();
-    }
+    if (sessionStorage.getItem('activeIncident') === 'true') runInvestigation();
   }, []);
 
   if (!isErrorActive) {
     return (
-      <div className="pt-32 px-10 min-h-screen flex flex-col items-center justify-center relative overflow-hidden bg-terminal-grid">
-         <motion.div animate={{ scale: [1, 1.2, 1], opacity: [0.1, 0.2, 0.1] }} transition={{ duration: 4, repeat: Infinity }} className="absolute w-[800px] h-[800px] bg-[#bef35e]/5 rounded-full blur-3xl pointer-events-none" />
-         <div className="relative z-10 text-center space-y-12">
-            <Search className="text-[#bef35e] mx-auto animate-pulse" size={60} />
-            <h2 className="text-5xl font-black italic tracking-tighter text-white uppercase mb-4">Scanning_Cluster</h2>
-            <button onClick={runInvestigation} className="px-10 py-4 bg-[#bef35e] text-black rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-[0_0_40px_rgba(190,243,94,0.3)] hover:scale-105 transition-all">Start Manual Investigation</button>
-         </div>
+      <div className="pt-32 px-10 min-h-screen flex flex-col items-center justify-center bg-black">
+         <div className="galactic-bg" />
+         <Search className="text-[#bef35e] animate-pulse mb-8" size={60} />
+         <h2 className="text-4xl font-black italic text-white uppercase mb-10">Scanning_Mesh</h2>
+         <button onClick={runInvestigation} className="bg-[#bef35e] text-black px-10 py-4 rounded-xl font-black uppercase text-xs shadow-[0_0_30px_rgba(190,243,94,0.3)] hover:scale-105 transition-all">Start Manual Scan</button>
       </div>
     );
   }
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pt-32 px-10 pb-20 max-w-[1700px] mx-auto min-h-screen">
-      
-      {/* 1. HUD METRICS */}
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="pt-32 px-10 pb-20 max-w-[1700px] mx-auto min-h-screen relative">
+      <div className="galactic-bg" />
+
+      {/* --- SECTION 1: TOP METRICS HUB --- */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-10">
-        <IncidentMetric label="Severity" value="CRITICAL" color="text-red-500" icon={<ShieldAlert size={14}/>}/>
-        <IncidentMetric label="MTTR_Target" value="0.82s" color="text-[#bef35e]" icon={<Zap size={14}/>}/>
-        <IncidentMetric label="AI_Logic_Confidence" value="98.4%" color="text-indigo-400" icon={<Cpu size={14}/>}/>
+        <IncidentMetric label="Incident_Severity" value="CRITICAL" color="text-red-500" icon={<ShieldAlert size={14}/>}/>
+        <IncidentMetric label="Active_Node" value={analysisData?.active_node || "SYNCING..."} color="text-[#bef35e]" icon={<Zap size={14}/>}/>
+        <IncidentMetric label="Logic_Confidence" value="98.4%" color="text-indigo-400" icon={<Cpu size={14}/>}/>
         <IncidentMetric label="Compliance" value={remediationComplete ? "STABILIZED" : "Verified"} color="text-emerald-400" icon={<ShieldCheck size={14}/>}/>
       </div>
 
@@ -126,7 +125,7 @@ const Incidents = () => {
           <Link to="/dashboard" className="text-[#bef35e] text-[10px] font-black uppercase tracking-[0.3em] flex items-center gap-2 hover:opacity-70 transition-all font-mono">
             <ArrowLeft size={14} /> Back_To_Console
           </Link>
-          <h2 className="text-6xl font-black tracking-tighter text-white uppercase italic leading-none">Investigation_Lab</h2>
+          <h2 className="text-6xl font-black tracking-tighter text-white uppercase italic">Investigation_Lab</h2>
         </div>
         <div className="flex gap-6 pt-10">
           {['Intercept', 'Synthesize', 'Reason', 'Validate'].map((label, i) => (
@@ -139,20 +138,18 @@ const Incidents = () => {
       </div>
 
       <div className="grid grid-cols-12 gap-8">
-        
-        {/* MAIN ANALYSIS CONTENT */}
         <div className="col-span-12 lg:col-span-8 space-y-8">
           <AnimatePresence mode="wait">
             {analysisStep < 3 ? (
               <div className="aura-card-modern p-40 flex flex-col items-center justify-center text-center bg-black/40 border-white/5">
                 <Loader2 className="text-[#bef35e] animate-spin mb-6" size={60} />
-                <p className="font-mono text-sm uppercase tracking-[0.5em] text-[#bef35e] animate-pulse">Running_AI_Diagnostic_Cycles...</p>
+                <p className="font-mono text-sm uppercase tracking-[0.5em] text-[#bef35e] animate-pulse">Running_Neural_Cycles...</p>
               </div>
             ) : (
               <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="aura-card-modern p-10 bg-gradient-to-br from-[#bef35e]/5 to-transparent border-[#bef35e]/20">
                 <div className="flex items-center gap-3 mb-10 border-b border-white/5 pb-6">
-                    <div className="p-3 bg-[#bef35e] text-black rounded-xl"><Cpu size={24} /></div>
-                    <h3 className="text-xl font-bold text-white uppercase">Automated_RCA_Report</h3>
+                    <div className="p-3 bg-[#bef35e] text-black rounded-xl shadow-[0_0_20px_rgba(190,243,94,0.4)]"><Cpu size={24} /></div>
+                    <h3 className="text-xl font-bold text-white uppercase tracking-widest">Automated_RCA_Report</h3>
                 </div>
                 <div className="prose prose-invert max-w-none font-sans text-zinc-300 leading-relaxed overflow-y-auto max-h-[500px] pr-6 custom-scrollbar text-lg">
                   <ReactMarkdown>{analysisData?.root_cause_analysis}</ReactMarkdown>
@@ -164,39 +161,38 @@ const Incidents = () => {
               <div className="grid grid-cols-1 gap-6">
                 <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} className="aura-card-modern p-0 overflow-hidden border-[#bef35e]/20 group">
                     <div className="bg-zinc-900/80 px-8 py-6 border-b border-white/5 flex justify-between items-center font-mono text-[10px]">
-                      <span className="font-black text-zinc-400 uppercase flex items-center gap-2"><Code size={14} /> Source_Link: AuthService.java</span>
+                      <span className="font-black text-zinc-400 uppercase flex items-center gap-2"><Code size={14} /> Source: AuthService.java</span>
                       <span className="px-4 py-1.5 rounded-full bg-[#bef35e]/10 text-[#bef35e] font-black uppercase tracking-widest">QA_SECURED</span>
                     </div>
-                    <div className="p-10 font-mono text-xs leading-relaxed bg-black/60 text-[#bef35e]/70 overflow-x-auto">
+                    <div className="p-10 font-mono text-xs leading-relaxed bg-black/60 text-[#bef35e]/70 overflow-x-auto border-b border-white/5">
                       <pre><code>{analysisData?.extracted_logic}</code></pre>
                     </div>
 
-                    {/* ACTION AREA */}
-                    <div className="p-8 bg-white/[0.01] border-t border-white/5">
+                    <div className="p-8 bg-white/[0.01]">
                         {!remediationComplete ? (
                             <button 
                                 onClick={handleRemediation} 
                                 disabled={isRemediating}
                                 className="w-full bg-[#bef35e] text-black py-5 rounded-2xl font-black uppercase text-xs shadow-[0_0_50px_rgba(190,243,94,0.3)] hover:scale-[1.01] transition-all flex items-center justify-center gap-3 font-sans disabled:opacity-50"
                             >
-                                {isRemediating ? "Remediating..." : "Apply Hotfix & Auto-Heal"} <Zap size={16} fill="currentColor" />
+                                {isRemediating ? "Initializing GitHub Node..." : "Apply Hotfix & Auto-Heal ⚡"}
                             </button>
                         ) : (
-                            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="p-6 bg-[#bef35e]/10 border border-[#bef35e]/30 rounded-2xl flex items-center justify-between">
+                            <div className="p-6 bg-[#bef35e]/10 border border-[#bef35e]/30 rounded-2xl flex items-center justify-between">
                                 <div className="flex items-center gap-4">
                                     <CheckCircle2 className="text-[#bef35e]" size={24} />
                                     <div>
                                         <p className="text-[#bef35e] font-black uppercase text-xs">Fix_Committed_Successfully</p>
-                                        <p className="text-zinc-500 text-[10px] font-mono">Aura has pushed the Yoda-condition patch to origin/fix-branch.</p>
+                                        <p className="text-zinc-500 text-[10px] font-mono italic">PR created. Waiting for Senior SRE merge on GitHub.</p>
                                     </div>
                                 </div>
                                 <button 
-                                    onClick={() => window.open(analysisData?.qa_validation?.report_url || "https://github.com/Xynash/aura-target-app/pulls", "_blank")}
-                                    className="bg-[#bef35e] text-black px-5 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-2"
+                                    onClick={() => window.open(analysisData?.pr_url || "https://github.com/Xynash/aura-target-app/pulls", "_blank")}
+                                    className="bg-[#bef35e] text-black px-6 py-2.5 rounded-xl text-[10px] font-black uppercase flex items-center gap-2 hover:scale-105 transition-all"
                                 >
                                     Check Branch <ExternalLink size={12} />
                                 </button>
-                            </motion.div>
+                            </div>
                         )}
                     </div>
                 </motion.div>
@@ -210,7 +206,7 @@ const Incidents = () => {
                        </div>
                        <div className="p-6 font-mono text-[10px] space-y-2 max-h-[300px] overflow-y-auto custom-scrollbar">
                           {terminalLines.map((line, i) => (
-                            <div key={i} className={line.startsWith('>') ? 'text-[#bef35e]' : line.includes('✅') || line.includes('SUCCESS') ? 'text-[#bef35e] font-bold' : 'text-zinc-500'}>{line}</div>
+                            <div key={i} className={line.startsWith('>') ? 'text-[#bef35e]' : line.includes('✅') || line.includes('PR') ? 'text-[#bef35e] font-bold' : 'text-zinc-500'}>{line}</div>
                           ))}
                           {!remediationComplete && <div className="w-2 h-3 bg-[#bef35e] animate-pulse inline-block ml-1" />}
                        </div>
@@ -222,10 +218,9 @@ const Incidents = () => {
           </AnimatePresence>
         </div>
 
-        {/* SIDEBAR */}
         <div className="col-span-12 lg:col-span-4 space-y-6">
-          <div className="aura-card-modern flex flex-col min-h-[600px] border-white/5">
-            <div className="p-6 border-b border-white/5 bg-white/[0.01] flex justify-between items-center">
+          <div className="aura-card-modern flex flex-col min-h-[600px] border-white/5 bg-black/40">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center">
                 <h3 className="text-[10px] font-black uppercase text-zinc-500 flex items-center gap-2 tracking-widest"><Terminal size={14} /> Neural_Assistant</h3>
                 <span className="text-[8px] font-bold text-[#bef35e] animate-pulse">Live_Sync</span>
             </div>
@@ -238,30 +233,20 @@ const Incidents = () => {
                         </div>
                     </div>
                 ))}
-                {remediationComplete && (
-                    <div className="p-5 rounded-2xl bg-[#bef35e]/5 border border-[#bef35e]/10 text-[#bef35e] text-[10px] font-bold animate-bounce">
-                       [SYSTEM_MSG]: Hotfix branch is staged. Awaiting your final merge on GitHub.
-                    </div>
-                )}
             </div>
             <div className="p-6 bg-black/40 border-t border-white/5">
-                <input 
-                    type="text" 
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                    placeholder={analysisStep < 4 ? "Core analyzing..." : "Ask Aura about the fix..."} 
-                    disabled={analysisStep < 4}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-xs focus:border-[#bef35e] outline-none transition-all placeholder:text-zinc-800" 
-                />
+                <div className="relative">
+                    <input type="text" value={chatInput} onChange={(e) => setChatInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()} placeholder={analysisStep < 4 ? "Core analyzing..." : "Ask Aura about the fix..."} disabled={analysisStep < 4} className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-xs focus:border-[#bef35e] outline-none transition-all placeholder:text-zinc-800" />
+                    <button onClick={handleSendMessage} className="absolute right-4 top-1/2 -translate-y-1/2 text-[#bef35e] opacity-60 hover:opacity-100"><Send size={16}/></button>
+                </div>
             </div>
           </div>
           
           <div className="aura-card-modern p-8 space-y-6 border-white/5">
-             <h4 className="text-[10px] font-black uppercase text-zinc-500 flex items-center gap-2 tracking-widest"><GitBranch size={14}/> Git_Remediation_Path</h4>
+             <h4 className="text-[10px] font-black uppercase text-zinc-500 flex items-center gap-2 tracking-widest"><GitBranch size={14}/> Hotfix_Pipeline</h4>
              <div className="space-y-6">
                 <PipelineStep num="01" label="Create Hotfix Branch" active={isRemediating} />
-                <PipelineStep num="02" label="Sync Source Patch" active={terminalLines.length > 8} />
+                <PipelineStep num="02" label="Sync Logic Patch" active={terminalLines.length > 8} />
                 <PipelineStep num="03" label="Awaiting Approval" active={remediationComplete} />
              </div>
           </div>
