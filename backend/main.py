@@ -45,7 +45,6 @@ AI_NODES = [
 ACTIVE_NODES = [n for n in AI_NODES if n["key"]]
 
 # Pod name → (source file, line number hint)
-# Add new microservices here — everything else is automatic
 POD_SERVICE_MAP = {
     "auth-gateway":   ("AuthService.java",     8),
     "payment-api":    ("PaymentService.java",  12),
@@ -56,6 +55,21 @@ POD_SERVICE_MAP = {
 # GitHub
 gh_client   = Github(auth=Auth.Token(os.getenv("GITHUB_TOKEN", "")))
 TARGET_REPO = os.getenv("GITHUB_REPO", "")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LIVE METRICS COUNTERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+aura_metrics = {
+    "incidents_detected": 0,
+    "rca_completed":      0,
+    "prs_created":        0,
+    "ai_failovers":       0,
+    "uptime_start":       datetime.utcnow().isoformat(),
+}
+
+# Incident history (last 10)
+incident_history: list[dict] = []
 
 # ─────────────────────────────────────────────────────────────────────────────
 # WEBSOCKET MANAGER
@@ -177,6 +191,7 @@ async def call_ai_with_failover(
         except Exception as e:
             print(f"⚠️  {node['name']} offline: {e}")
             last_error = e
+            aura_metrics["ai_failovers"] += 1
             continue
     raise HTTPException(
         status_code=503,
@@ -202,7 +217,6 @@ def trigger_github_remediation(fixed_code: str, service_file: str = "AuthService
         )
 
         # Dynamically find the file path in the repo
-        # Assumes repo structure mirrors mock_repo structure
         service_name = service_file.replace(".java", "")
         file_path    = f"src/main/java/io/aura/{service_name.lower()}/{service_file}"
 
@@ -234,6 +248,7 @@ def trigger_github_remediation(fixed_code: str, service_file: str = "AuthService
             head=branch_name,
             base="main"
         )
+        aura_metrics["prs_created"] += 1
         return pr.html_url
     except Exception as e:
         print(f"⚠️  GitHub error: {e}")
@@ -249,6 +264,7 @@ async def handle_real_incident(pod_name: str, reason: str, message: str):
         print(f"⏭️  Debounced: {pod_name} already processed within {DEBOUNCE_SECONDS}s")
         return
 
+    aura_metrics["incidents_detected"] += 1
     print(f"🚨 Auto-RCA triggered for pod: {pod_name}")
 
     # Broadcast alert immediately — dashboard turns red NOW
@@ -288,9 +304,11 @@ async def handle_real_incident(pod_name: str, reason: str, message: str):
 
     try:
         analysis, node_used = await call_ai_with_failover(prompt)
+        aura_metrics["rca_completed"] += 1
     except Exception as e:
         analysis  = f"AI analysis failed: {e}"
         node_used = "NONE"
+        aura_metrics["ai_failovers"] += 1
 
     # Broadcast complete RCA
     await manager.broadcast({
@@ -305,6 +323,18 @@ async def handle_real_incident(pod_name: str, reason: str, message: str):
         "timestamp":            datetime.utcnow().isoformat(),
         "status":               "complete"
     })
+
+    # Append to incident history (cap at 10)
+    incident_history.append({
+        "pod":       pod_name,
+        "reason":    reason,
+        "file":      file_name,
+        "method":    method_name,
+        "node":      node_used,
+        "timestamp": datetime.utcnow().isoformat(),
+    })
+    if len(incident_history) > 10:
+        incident_history.pop(0)
 
     print(f"✅ Auto-RCA complete for {pod_name} via {node_used}")
 
@@ -418,13 +448,13 @@ class ChatRequest(BaseModel):
 @app.get("/health")
 def health():
     return {
-        "status":               "Aura Active",
-        "version":              "2.0.0",
-        "nodes_online":         len(ACTIVE_NODES),
-        "watcher":              "armed" if K8S_AVAILABLE else "disabled",
+        "status":                "Aura Active",
+        "version":               "2.0.0",
+        "nodes_online":          len(ACTIVE_NODES),
+        "watcher":               "armed" if K8S_AVAILABLE else "disabled",
         "dashboard_connections": len(manager.active),
-        "namespace":            NAMESPACE,
-        "services_mapped":      len(POD_SERVICE_MAP),
+        "namespace":             NAMESPACE,
+        "services_mapped":       len(POD_SERVICE_MAP),
     }
 
 @app.post("/analyze")
@@ -492,6 +522,46 @@ public class AuthService {
             ]
         }
     return {"status": "FAILED", "steps": ["> Error: Check GITHUB_TOKEN in .env"]}
+
+# ── Simulation endpoint (Playground) ─────────────────────────────────────────
+
+@app.post("/simulate/{service_name}")
+async def simulate_crash(service_name: str):
+    """
+    Manually trigger the full RCA pipeline for any mapped service.
+    Used by Playground — works without Minikube running.
+    """
+    valid = list(POD_SERVICE_MAP.keys())
+    if service_name not in valid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown service '{service_name}'. Valid: {valid}"
+        )
+    # Fire the full autonomous pipeline in background
+    asyncio.create_task(handle_real_incident(
+        pod_name=service_name,
+        reason="SimulatedCrash",
+        message=f"Aura Playground: simulated BackOff on {service_name}"
+    ))
+    return {"status": "simulation_started", "pod": service_name}
+
+# ── Metrics endpoint ──────────────────────────────────────────────────────────
+
+@app.get("/metrics")
+def get_metrics():
+    return {
+        **aura_metrics,
+        "active_connections":  len(manager.active),
+        "nodes_online":        len(ACTIVE_NODES),
+        "debounce_cache_size": len(seen_pods),
+        "namespace":           NAMESPACE,
+    }
+
+# ── History endpoint ──────────────────────────────────────────────────────────
+
+@app.get("/history")
+def get_history():
+    return {"incidents": incident_history, "total": len(incident_history)}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # WEBSOCKET
