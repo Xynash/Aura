@@ -4,7 +4,7 @@
 
   <br/>
 
-  [![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=32&pause=1000&color=BEF35E&center=true&vCenter=true&width=600&lines=🛰️+Project+Aura;Source-Aware+AIOps+Engine;Root+Cause+%E2%86%92+Sub-second+Insights;Self-Healing+Kubernetes+Clusters)](https://git.io/typing-svg)
+  [![Typing SVG](https://readme-typing-svg.demolab.com?font=Fira+Code&weight=700&size=32&pause=1000&color=BEF35E&center=true&vCenter=true&width=600&lines=🛰️+Aura;Source-Aware+AIOps+Engine;Root+Cause+%E2%86%92+Sub-second+Insights;Self-Healing+Kubernetes+Clusters)](https://git.io/typing-svg)
 
   <br/>
 
