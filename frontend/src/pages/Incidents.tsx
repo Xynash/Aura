@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
-import { useAuraSocket, AuraEvent } from '../hooks/useAuraSocket';
+import { useAuraSocket } from '../hooks/useAuraSocket';
 
 const Incidents = () => {
   const [analysisStep,        setAnalysisStep]        = useState(0);
@@ -24,7 +24,7 @@ const Incidents = () => {
   const [qaResult,            setQaResult]            = useState<any>(null);
 
   // ── WebSocket ─────────────────────────────────────────────────────────────
-  useAuraSocket((event: AuraEvent) => {
+  useAuraSocket((event: any) => {
     if (event.type === "incident_detected") {
       setIsLiveMode(true);
       setIsErrorActive(true);

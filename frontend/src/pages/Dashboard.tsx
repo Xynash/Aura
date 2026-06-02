@@ -6,7 +6,7 @@ import {
   Network, Layers, BookOpen, Activity
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAuraSocket, AuraEvent } from '../hooks/useAuraSocket';
+import { useAuraSocket } from '../hooks/useAuraSocket';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -63,7 +63,7 @@ const Dashboard = () => {
   }, []);
 
   // ── WebSocket ─────────────────────────────────────────────────────────────
-  useAuraSocket((event: AuraEvent) => {
+  useAuraSocket((event: any) => {
     if (event.type === "connected") {
       setWatcherStatus(`Watcher armed · ns: ${event.namespace} · ${event.nodes_online} AI nodes`);
       setWatcherMode("LIVE_K8S");

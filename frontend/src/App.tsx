@@ -6,7 +6,7 @@ import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import Incidents from './pages/Incidents';
 import Playground from './pages/Playground';
-import { useAuraSocket, AuraEvent } from './hooks/useAuraSocket';
+import { useAuraSocket } from './hooks/useAuraSocket';
 
 export type SystemStatus = 'idle' | 'initializing' | 'active' | 'offline';
 
@@ -42,7 +42,7 @@ const App: React.FC = () => {
   const [incidentCount,  setIncidentCount]  = useState(0);
 
   // ── WebSocket — drive watcher dot + incident badge from here ──────────────
-  useAuraSocket((event: AuraEvent) => {
+  useAuraSocket((event: any) => {
     if (event.type === "connected") {
       // If namespace returned — real K8s. Otherwise simulation mode.
       setWatcherStatus(event.namespace ? 'armed' : 'simulation');

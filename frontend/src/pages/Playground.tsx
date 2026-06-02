@@ -7,7 +7,7 @@ import {
   Share2, Waypoints, CheckCircle2,
   Loader2, Radio, XCircle
 } from 'lucide-react';
-import { useAuraSocket, AuraEvent } from '../hooks/useAuraSocket';
+import { useAuraSocket } from '../hooks/useAuraSocket';
 
 type SimService = "auth-gateway" | "payment-api" | "inventory-node";
 
@@ -34,7 +34,7 @@ const Playground = () => {
   }, []);
 
   // ── WebSocket — receive real RCA from watcher ─────────────────────────────
-  useAuraSocket((event: AuraEvent) => {
+  useAuraSocket((event: any) => {
     if (event.type === "incident_detected" && simState === "simulating") {
       setSimState("analyzing");
       setActiveSpeaker("watcher");

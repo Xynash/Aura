@@ -2,7 +2,7 @@ import React from 'react';
 import { NavLink, Link, useNavigate } from 'react-router-dom';
 import { Activity, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { WatcherStatus } from '../App';
+type WatcherStatus = 'connecting' | 'armed' | 'simulation' | 'offline';
 
 // ── Watcher dot config ────────────────────────────────────────────────────────
 const WATCHER_CONFIG: Record<WatcherStatus, { color: string; pulse: boolean; label: string }> = {
