@@ -22,7 +22,7 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
   const launchEngine = async () => {
     setSystemStatus('initializing');
     try {
-      const response = await fetch("http://localhost:8000/health");
+      const response = await fetch("https://aura-backend-33nm.onrender.com/health");
       if (response.ok) {
         setTimeout(() => {
           setSystemStatus('active');

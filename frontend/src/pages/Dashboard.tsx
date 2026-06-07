@@ -45,7 +45,7 @@ const Dashboard = () => {
     // Fetch live metrics every 5s
     const metricsInterval = setInterval(async () => {
       try {
-        const res  = await fetch("http://localhost:8000/metrics");
+        const res  = await fetch("https://aura-backend-33nm.onrender.com/metrics");
         const data = await res.json();
         setLiveMetrics({
           incidents_detected: data.incidents_detected || 0,

@@ -77,7 +77,7 @@ const Playground = () => {
     setSpeech(`Injecting fault into ${SERVICE_META[service].label}...`);
 
     try {
-      const res  = await fetch(`http://localhost:8000/simulate/${service}`, { method: "POST" });
+      const res  = await fetch(`https://aura-backend-33nm.onrender.com/simulate/${service}`, { method: "POST" });
       const data = await res.json();
 
       if (data.status !== "simulation_started") {

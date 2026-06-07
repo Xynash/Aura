@@ -44,7 +44,7 @@ export function useAuraSocket(onEvent: (e: AuraEvent) => void) {
     try {
       const WS_URL =
         import.meta.env.VITE_WS_URL ??
-        "ws://localhost:8000/ws/incidents";
+        "wss://aura-backend-33nm.onrender.com/ws/incidents";
 
       console.log(`🔌 Connecting to: ${WS_URL}`);
       const ws = new WebSocket(WS_URL);

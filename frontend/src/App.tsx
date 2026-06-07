@@ -60,7 +60,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkBackend = async () => {
       try {
-        const res = await fetch("http://localhost:8000/health");
+        const res = await fetch("https://aura-backend-33nm.onrender.com/health");
         if (!res.ok) throw new Error();
       } catch {
         console.warn("Aura Engine: Waiting for connection...");

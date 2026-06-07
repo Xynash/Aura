@@ -70,7 +70,7 @@ const Incidents = () => {
     setTerminalLines([]);
     try {
       setTimeout(() => setAnalysisStep(2), 1200);
-      const res  = await fetch("http://localhost:8000/analyze", {
+      const res  = await fetch("https://aura-backend-33nm.onrender.com/analyze", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -124,7 +124,7 @@ const Incidents = () => {
     setChatInput('');
     setChatMessages(prev => [...prev, { type: 'user', text: userMsg }]);
     try {
-      const res  = await fetch("http://localhost:8000/chat", {
+      const res  = await fetch("https://aura-backend-33nm.onrender.com/chat", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({
@@ -142,7 +142,7 @@ const Incidents = () => {
     setIsRemediating(true);
     setTerminalLines(["> Initializing Aura Subspace Remediation Protocol..."]);
     try {
-      const res  = await fetch("http://localhost:8000/remediate");
+      const res  = await fetch("https://aura-backend-33nm.onrender.com/remediate");
       const data = await res.json();
 
       // Show QA result
