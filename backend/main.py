@@ -1,7 +1,6 @@
 import os
 import re
 import uuid
-import javalang
 import asyncio
 import json
 from contextlib import asynccontextmanager
@@ -17,31 +16,34 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# ── Kubernetes (optional — graceful if missing) ───────────────────────────────
+# ── Optional imports (graceful degradation in cloud) ─────────────────────────
+try:
+    import javalang
+    JAVALANG_AVAILABLE = True
+except ImportError:
+    JAVALANG_AVAILABLE = False
+    print("⚠️  javalang missing — AST disabled, falling back to raw read.")
+
 try:
     from kubernetes import client as k8s_client, config as k8s_config, watch
     K8S_AVAILABLE = True
 except ImportError:
     K8S_AVAILABLE = False
-    print("⚠️  kubernetes package missing. Watcher disabled.")
+    print("⚠️  kubernetes missing — Watcher disabled.")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CONFIGURATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-CURRENT_FILE_DIR = os.path.dirname(os.path.abspath(__file__))
-REPO_BASE_PATH   = os.path.join(CURRENT_FILE_DIR, "mock_repo")
+# ── Config ────────────────────────────────────────────────────────────────────
+BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
+REPO_BASE_PATH   = os.path.join(BASE_DIR, "mock_repo")
 NAMESPACE        = os.getenv("KUBE_NAMESPACE", "default")
 DEBOUNCE_SECONDS = 60
 WATCH_REASONS    = {"BackOff", "Failed", "OOMKilling", "Evicted", "FailedMount"}
 
-AI_NODES = [
-    {"name": "ALPHA_NODE",   "key": os.getenv("GROQ_API_KEY_1")},
-    {"name": "BRAVO_NODE",   "key": os.getenv("GROQ_API_KEY_2")},
-    {"name": "CHARLIE_NODE", "key": os.getenv("GROQ_API_KEY_3")},
-    {"name": "DELTA_NODE",   "key": os.getenv("GROQ_API_KEY")},
-]
-ACTIVE_NODES = [n for n in AI_NODES if n["key"]]
+AI_NODES = [n for n in [
+    {"name": "ALPHA",   "key": os.getenv("GROQ_API_KEY_1")},
+    {"name": "BRAVO",   "key": os.getenv("GROQ_API_KEY_2")},
+    {"name": "CHARLIE", "key": os.getenv("GROQ_API_KEY_3")},
+    {"name": "DELTA",   "key": os.getenv("GROQ_API_KEY")},
+] if n["key"]]
 
 POD_SERVICE_MAP = {
     "auth-gateway":   ("AuthService.java",      8),
@@ -50,232 +52,131 @@ POD_SERVICE_MAP = {
     "crasher":        ("AuthService.java",       8),
 }
 
+DANGEROUS_PATTERNS = [
+    "System.exit", "Runtime.getRuntime().exec",
+    "DROP TABLE", "DELETE FROM", "rm -rf", "ProcessBuilder",
+]
+
 gh_client   = Github(auth=Auth.Token(os.getenv("GITHUB_TOKEN", "")))
 TARGET_REPO = os.getenv("GITHUB_REPO", "")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# LIVE METRICS + HISTORY
-# ─────────────────────────────────────────────────────────────────────────────
-
+# ── Helpers ───────────────────────────────────────────────────────────────────
 def now() -> datetime:
-    """Timezone-aware UTC now — used everywhere."""
     return datetime.now(timezone.utc)
 
+# ── Metrics + History ─────────────────────────────────────────────────────────
 aura_metrics = {
-    "incidents_detected": 0,
-    "rca_completed":      0,
-    "prs_created":        0,
-    "ai_failovers":       0,
-    "uptime_start":       now().isoformat(),
+    "incidents_detected": 0, "rca_completed": 0,
+    "prs_created": 0, "ai_failovers": 0,
+    "uptime_start": now().isoformat(),
 }
-
 incident_history: list[dict] = []
 
-# ─────────────────────────────────────────────────────────────────────────────
-# WEBSOCKET MANAGER
-# ─────────────────────────────────────────────────────────────────────────────
-
+# ── WebSocket Manager ─────────────────────────────────────────────────────────
 class ConnectionManager:
-    def __init__(self):
-        self.active: list[WebSocket] = []
+    def __init__(self): self.active: list[WebSocket] = []
 
     async def connect(self, ws: WebSocket):
         await ws.accept()
         self.active.append(ws)
-        print(f"🔌 Dashboard connected. Total: {len(self.active)}")
+        print(f"🔌 Connected. Total: {len(self.active)}")
 
     def disconnect(self, ws: WebSocket):
-        if ws in self.active:
-            self.active.remove(ws)
-        print(f"🔌 Dashboard disconnected. Total: {len(self.active)}")
+        if ws in self.active: self.active.remove(ws)
 
     async def broadcast(self, data: dict):
-        payload      = json.dumps(data)
-        disconnected = []
+        dead = []
         for ws in self.active:
-            try:
-                await ws.send_text(payload)
-            except Exception:
-                disconnected.append(ws)
-        for ws in disconnected:
-            if ws in self.active:
-                self.active.remove(ws)
+            try: await ws.send_text(json.dumps(data))
+            except: dead.append(ws)
+        for ws in dead:
+            if ws in self.active: self.active.remove(ws)
 
 manager = ConnectionManager()
 
-# ─────────────────────────────────────────────────────────────────────────────
-# DEBOUNCE
-# ─────────────────────────────────────────────────────────────────────────────
-
+# ── Debounce ──────────────────────────────────────────────────────────────────
 seen_pods: dict[str, datetime] = {}
 
-def should_trigger(pod_name: str) -> bool:
-    last = seen_pods.get(pod_name)
+def should_trigger(pod: str) -> bool:
+    last = seen_pods.get(pod)
     if last and now() - last < timedelta(seconds=DEBOUNCE_SECONDS):
         return False
-    seen_pods[pod_name] = now()
+    seen_pods[pod] = now()
     return True
 
-# ─────────────────────────────────────────────────────────────────────────────
-# SOURCE ANALYSIS
-# ─────────────────────────────────────────────────────────────────────────────
-
-def get_service_file(pod_name: str) -> tuple[str, int]:
-    """Map pod name to source file. Partial match supported."""
-    for key, value in POD_SERVICE_MAP.items():
-        if key in pod_name:
-            return value
+# ── Source Analysis ───────────────────────────────────────────────────────────
+def get_service_file(pod: str) -> tuple[str, int]:
+    for k, v in POD_SERVICE_MAP.items():
+        if k in pod: return v
     return "AuthService.java", 8
 
-def extract_source_from_message(message: str, pod_name: str = "") -> tuple[str, int]:
-    """
-    Priority:
-    1. Parse Java stack trace from K8s event message
-    2. Map pod name to known service file
-    3. Fallback to AuthService.java
-    """
-    match = re.search(r'(\w+\.java):(\d+)', message)
-    if match:
-        return match.group(1), int(match.group(2))
-    return get_service_file(pod_name)
+def extract_source(message: str, pod: str = "") -> tuple[str, int]:
+    m = re.search(r'(\w+\.java):(\d+)', message)
+    return (m.group(1), int(m.group(2))) if m else get_service_file(pod)
 
-def find_file_recursively(root_folder: str, target_file: str) -> Optional[str]:
-    """Walk mock_repo tree and find the target Java file."""
-    for root, dirs, files in os.walk(root_folder):
-        if target_file in files:
-            return os.path.join(root, target_file)
+def find_file(root: str, target: str) -> Optional[str]:
+    for r, _, files in os.walk(root):
+        if target in files: return os.path.join(r, target)
     return None
 
-def get_method_context(file_path: str, line_num: int) -> tuple[str, str]:
-    """Use AST to extract the method containing the crash line."""
+def get_method_context(path: str, line: int) -> tuple[str, str]:
     try:
-        with open(file_path, 'r') as f:
-            code = f.read()
+        code = open(path).read()
+        if not JAVALANG_AVAILABLE:
+            return code[:2000], "ClassScope"
         tree  = javalang.parse.parse(code)
         lines = code.splitlines()
         for _, node in tree.filter(javalang.tree.MethodDeclaration):
-            start = node.position.line
-            end   = start + 20
-            if start <= line_num <= end:
-                return "\n".join(lines[start - 1:end]), node.name
+            s, e = node.position.line, node.position.line + 20
+            if s <= line <= e:
+                return "\n".join(lines[s-1:e]), node.name
         return code[:2000], "ClassScope"
-    except Exception as e:
-        print(f"⚠️  AST parse error: {e}")
-        return "AST_PARSING_FAILED", "Unknown"
+    except Exception as ex:
+        print(f"⚠️  AST error: {ex}")
+        return "PARSE_FAILED", "Unknown"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# QA VALIDATOR
-# ─────────────────────────────────────────────────────────────────────────────
-
-DANGEROUS_PATTERNS = [
-    "System.exit",
-    "Runtime.getRuntime().exec",
-    "DROP TABLE",
-    "DELETE FROM",
-    "rm -rf",
-    "ProcessBuilder",
-]
-
-def qa_validate_fix(fixed_code: str) -> dict:
-    """
-    Safety scan on AI-generated fix.
-    Checks for dangerous patterns before allowing PR creation.
-    """
-    violations = []
-    for pattern in DANGEROUS_PATTERNS:
-        if pattern in fixed_code:
-            violations.append(pattern)
-
-    score = max(0, 100 - (len(violations) * 25))
-
+# ── QA Validator ──────────────────────────────────────────────────────────────
+def qa_validate(code: str) -> dict:
+    v = [p for p in DANGEROUS_PATTERNS if p in code]
     return {
-        "passed":     len(violations) == 0,
-        "violations": violations,
-        "score":      score,
-        "report":     "Clean" if not violations else f"Blocked: {violations}"
+        "passed": not v, "violations": v,
+        "score": max(0, 100 - len(v) * 25),
+        "report": "Clean" if not v else f"Blocked: {v}"
     }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# AI ENGINE
-# ─────────────────────────────────────────────────────────────────────────────
-
-async def call_ai_with_failover(
-    prompt: str,
-    system_message: str = "You are a specialized SRE agent. Be concise and technical."
-) -> tuple[str, str]:
-    """Try each AI node in sequence. Raise only if all fail."""
-    last_error = None
-    for node in ACTIVE_NODES:
+# ── AI Engine ─────────────────────────────────────────────────────────────────
+async def call_ai(prompt: str, system: str = "You are a specialized SRE agent. Be concise and technical.") -> tuple[str, str]:
+    last_err = None
+    for node in AI_NODES:
         try:
-            print(f"🧠 Attempting Neural Link via {node['name']}...")
-            c          = Groq(api_key=node["key"])
-            completion = c.chat.completions.create(
+            print(f"🧠 Neural link via {node['name']}...")
+            r = Groq(api_key=node["key"]).chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": system_message},
-                    {"role": "user",   "content": prompt}
-                ],
-                temperature=0.2,
-                max_tokens=1000,
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+                temperature=0.2, max_tokens=1000,
             )
-            return completion.choices[0].message.content, node["name"]
+            return r.choices[0].message.content, node["name"]
         except Exception as e:
             print(f"⚠️  {node['name']} offline: {e}")
-            last_error = e
             aura_metrics["ai_failovers"] += 1
-            continue
-    raise HTTPException(
-        status_code=503,
-        detail=f"All AI nodes saturated. Last error: {last_error}"
-    )
+            last_err = e
+    raise HTTPException(503, f"All AI nodes saturated. Last: {last_err}")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# GITHUB REMEDIATION
-# ─────────────────────────────────────────────────────────────────────────────
-
-def trigger_github_remediation(
-    fixed_code: str,
-    service_file: str = "AuthService.java"
-) -> Optional[str]:
-    """Create branch, commit fix, open PR. Works for any service file."""
+# ── GitHub PR ─────────────────────────────────────────────────────────────────
+def create_pr(code: str, service_file: str = "AuthService.java") -> Optional[str]:
     try:
-        repo         = gh_client.get_repo(TARGET_REPO)
-        branch_name  = f"aura-fix-{uuid.uuid4().hex[:6]}"
-        main_ref     = repo.get_git_ref("heads/main")
-        repo.create_git_ref(
-            ref=f"refs/heads/{branch_name}",
-            sha=main_ref.object.sha
-        )
-
-        service_name = service_file.replace(".java", "")
-        file_path    = f"src/main/java/io/aura/{service_name.lower()}/{service_file}"
-
-        try:
-            contents = repo.get_contents(file_path, ref="main")
-        except Exception:
-            file_path = "src/main/java/io/aura/AuthService.java"
-            contents  = repo.get_contents(file_path, ref="main")
-
-        repo.update_file(
-            contents.path,
-            f"fix({service_name}): Aura autonomous hotfix — resolve runtime exception",
-            fixed_code,
-            contents.sha,
-            branch=branch_name
-        )
+        repo   = gh_client.get_repo(TARGET_REPO)
+        branch = f"aura-fix-{uuid.uuid4().hex[:6]}"
+        repo.create_git_ref(f"refs/heads/{branch}", repo.get_git_ref("heads/main").object.sha)
+        svc  = service_file.replace(".java", "")
+        path = f"src/main/java/io/aura/{svc.lower()}/{service_file}"
+        try:    contents = repo.get_contents(path, ref="main")
+        except: contents = repo.get_contents("src/main/java/io/aura/AuthService.java", ref="main")
+        repo.update_file(contents.path, f"fix({svc}): Aura autonomous hotfix", code, contents.sha, branch=branch)
         pr = repo.create_pull(
-            title=f"🚀 Aura: Automated Hotfix — {service_name}",
-            body=(
-                f"## Autonomous Remediation Report\n\n"
-                f"**Service:** `{service_file}`\n"
-                f"**Branch:** `{branch_name}`\n\n"
-                f"Incident localized via AST parsing. "
-                f"Root cause identified by Llama 3.3. "
-                f"Fix validated by QA suite.\n\n"
-                f"> Awaiting senior SRE review before merge."
-            ),
-            head=branch_name,
-            base="main"
+            title=f"🚀 Aura: Hotfix — {svc}",
+            body=f"**Service:** `{service_file}`\n\nLocalized via AST · Analyzed by Llama 3.3 · QA validated.\n\n> Awaiting SRE review.",
+            head=branch, base="main"
         )
         aura_metrics["prs_created"] += 1
         return pr.html_url
@@ -283,349 +184,136 @@ def trigger_github_remediation(
         print(f"⚠️  GitHub error: {e}")
         return None
 
-# ─────────────────────────────────────────────────────────────────────────────
-# AUTONOMOUS INCIDENT PIPELINE
-# ─────────────────────────────────────────────────────────────────────────────
-
-async def handle_real_incident(pod_name: str, reason: str, message: str):
-    """Full autonomous pipeline: detect → source → AI → broadcast."""
-    if not should_trigger(pod_name):
-        print(f"⏭️  Debounced: {pod_name} already processed within {DEBOUNCE_SECONDS}s")
+# ── Incident Pipeline ─────────────────────────────────────────────────────────
+async def handle_incident(pod: str, reason: str, message: str):
+    if not should_trigger(pod):
+        print(f"⏭️  Debounced: {pod}")
         return
 
     aura_metrics["incidents_detected"] += 1
-    print(f"🚨 Auto-RCA triggered for pod: {pod_name}")
+    print(f"🚨 RCA triggered: {pod}")
 
-    # Broadcast alert immediately — dashboard turns red NOW
-    await manager.broadcast({
-        "type":      "incident_detected",
-        "pod":       pod_name,
-        "reason":    reason,
-        "message":   message,
-        "timestamp": now().isoformat(),
-        "status":    "analyzing"
-    })
+    await manager.broadcast({"type": "incident_detected", "pod": pod, "reason": reason, "message": message, "timestamp": now().isoformat(), "status": "analyzing"})
 
-    # Source linking
-    file_name, line_number    = extract_source_from_message(message, pod_name)
-    code_snippet, method_name = "Source not found", "Unknown"
+    file_name, line_num   = extract_source(message, pod)
+    code, method          = "Source not found", "Unknown"
+    fp = find_file(REPO_BASE_PATH, file_name)
+    if fp:
+        code, method = get_method_context(fp, line_num)
+        print(f"📂 {file_name} → {method}")
 
-    file_path = find_file_recursively(REPO_BASE_PATH, file_name)
-    if file_path:
-        code_snippet, method_name = get_method_context(file_path, line_number)
-        print(f"📂 Source linked: {file_name} → method {method_name}")
-    else:
-        print(f"⚠️  File not found: {file_name}")
-
-    # AI analysis
-    prompt = (
-        f"AUTONOMOUS KUBERNETES INCIDENT\n"
-        f"Pod: {pod_name}\n"
-        f"Failure Reason: {reason}\n"
-        f"K8s Event: {message}\n"
-        f"Source File: {file_name}\n"
-        f"Method: {method_name}\n"
-        f"Code:\n{code_snippet}\n\n"
-        f"Provide: 1) Root cause in one sentence. "
-        f"2) The exact fix with corrected code. "
-        f"3) How to prevent this in future."
-    )
+    prompt = f"KUBERNETES INCIDENT\nPod: {pod}\nReason: {reason}\nEvent: {message}\nFile: {file_name}\nMethod: {method}\nCode:\n{code}\n\n1) Root cause. 2) Exact fix. 3) Prevention."
 
     try:
-        analysis, node_used = await call_ai_with_failover(prompt)
+        analysis, node = await call_ai(prompt)
         aura_metrics["rca_completed"] += 1
     except Exception as e:
-        analysis  = f"AI analysis failed: {e}"
-        node_used = "NONE"
+        analysis, node = f"AI failed: {e}", "NONE"
 
-    # Broadcast complete RCA
-    await manager.broadcast({
-        "type":                "rca_complete",
-        "pod":                 pod_name,
-        "reason":              reason,
-        "root_cause_analysis": analysis,
-        "extracted_logic":     code_snippet,
-        "method":              method_name,
-        "source_file":         file_name,
-        "active_node":         node_used,
-        "timestamp":           now().isoformat(),
-        "status":              "complete"
-    })
+    await manager.broadcast({"type": "rca_complete", "pod": pod, "reason": reason, "root_cause_analysis": analysis, "extracted_logic": code, "method": method, "source_file": file_name, "active_node": node, "timestamp": now().isoformat(), "status": "complete"})
 
-    # Append to history (cap at 10)
-    incident_history.append({
-        "pod":       pod_name,
-        "reason":    reason,
-        "file":      file_name,
-        "method":    method_name,
-        "node":      node_used,
-        "timestamp": now().isoformat(),
-    })
-    if len(incident_history) > 10:
-        incident_history.pop(0)
+    incident_history.append({"pod": pod, "reason": reason, "file": file_name, "method": method, "node": node, "timestamp": now().isoformat()})
+    if len(incident_history) > 10: incident_history.pop(0)
+    print(f"✅ RCA done: {pod} via {node}")
 
-    print(f"✅ Auto-RCA complete for {pod_name} via {node_used}")
-
-# ─────────────────────────────────────────────────────────────────────────────
-# KUBERNETES WATCHER
-# ─────────────────────────────────────────────────────────────────────────────
-
+# ── K8s Watcher ───────────────────────────────────────────────────────────────
 async def kubernetes_watcher():
-    """Background task — watches K8s event stream forever."""
     if not K8S_AVAILABLE:
-        print("🚫 Watcher disabled: kubernetes package not installed.")
+        print("🚫 Watcher disabled.")
         return
-
     try:
-        if os.getenv("KUBE_IN_CLUSTER", "false").lower() == "true":
-            k8s_config.load_incluster_config()
-            print("☁️  Loaded in-cluster kubeconfig.")
-        else:
-            k8s_config.load_kube_config()
-            print("💻 Loaded local kubeconfig (Minikube mode).")
+        k8s_config.load_incluster_config() if os.getenv("KUBE_IN_CLUSTER", "false").lower() == "true" else k8s_config.load_kube_config()
+        print("💻 Kubeconfig loaded.")
     except Exception as e:
-        print(f"⚠️  Could not load kubeconfig: {e}. Watcher disabled.")
+        print(f"⚠️  Kubeconfig failed: {e}. Watcher disabled.")
         return
 
-    v1   = k8s_client.CoreV1Api()
-    w    = watch.Watch()
-    loop = asyncio.get_event_loop()
+    v1, w, loop = k8s_client.CoreV1Api(), watch.Watch(), asyncio.get_event_loop()
+    print(f"👁️  Watching namespace: '{NAMESPACE}'")
 
-    print(f"👁️  Aura Watcher armed — namespace: '{NAMESPACE}'")
-
-    def blocking_watch():
+    def watch_loop():
         try:
-            for event in w.stream(
-                v1.list_namespaced_event,
-                namespace=NAMESPACE,
-                timeout_seconds=0,
-            ):
-                obj  = event.get("object")
-                if not obj:
-                    continue
-
-                reason     = obj.reason or ""
-                event_type = obj.type   or ""
-                pod_name   = obj.involved_object.name or "unknown"
-                kind       = obj.involved_object.kind or ""
-                message    = obj.message or ""
-
-                if event_type != "Warning" or kind != "Pod":
-                    continue
-                if reason not in WATCH_REASONS:
-                    continue
-
-                print(f"🚨 DETECTED: {reason} on pod '{pod_name}' — {message[:80]}")
-
-                asyncio.run_coroutine_threadsafe(
-                    handle_real_incident(pod_name, reason, message),
-                    loop
-                )
+            for event in w.stream(v1.list_namespaced_event, namespace=NAMESPACE, timeout_seconds=0):
+                obj = event.get("object")
+                if not obj: continue
+                if obj.type != "Warning" or obj.involved_object.kind != "Pod": continue
+                if (obj.reason or "") not in WATCH_REASONS: continue
+                pod = obj.involved_object.name or "unknown"
+                print(f"🚨 {obj.reason} on '{pod}'")
+                asyncio.run_coroutine_threadsafe(handle_incident(pod, obj.reason or "", obj.message or ""), loop)
         except Exception as e:
-            print(f"⚠️  Watcher stream error: {e}")
+            print(f"⚠️  Watcher error: {e}")
 
-    await loop.run_in_executor(None, blocking_watch)
+    await loop.run_in_executor(None, watch_loop)
 
-# ─────────────────────────────────────────────────────────────────────────────
-# APP LIFESPAN
-# ─────────────────────────────────────────────────────────────────────────────
-
+# ── Lifespan ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    watcher_task = asyncio.create_task(kubernetes_watcher())
-    print("🚀 Aura Engine online. Watcher armed.")
+    task = asyncio.create_task(kubernetes_watcher())
+    print("🚀 Aura Engine online.")
     yield
-    watcher_task.cancel()
-    try:
-        await watcher_task
-    except asyncio.CancelledError:
-        print("👁️  Watcher stopped cleanly.")
+    task.cancel()
+    try: await task
+    except asyncio.CancelledError: print("👁️  Watcher stopped.")
 
-# ─────────────────────────────────────────────────────────────────────────────
-# FASTAPI APP
-# ─────────────────────────────────────────────────────────────────────────────
-
-app = FastAPI(
-    title="Project Aura — High-Availability AIOps Engine",
-    version="2.0.0",
-    lifespan=lifespan
-)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MODELS
-# ─────────────────────────────────────────────────────────────────────────────
+# ── App ───────────────────────────────────────────────────────────────────────
+app = FastAPI(title="Project Aura — AIOps Engine", version="2.0.0", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 class IncidentRequest(BaseModel):
-    pod_name:    str
-    file_name:   str
-    line_number: int
-    error_log:   str
+    pod_name: str; file_name: str; line_number: int; error_log: str
 
 class ChatRequest(BaseModel):
-    user_input: str
-    context:    str
+    user_input: str; context: str
 
-# ─────────────────────────────────────────────────────────────────────────────
-# ENDPOINTS
-# ─────────────────────────────────────────────────────────────────────────────
-
+# ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
-    return {
-        "status":                "Aura Active",
-        "version":               "2.0.0",
-        "nodes_online":          len(ACTIVE_NODES),
-        "watcher":               "armed" if K8S_AVAILABLE else "disabled",
-        "dashboard_connections": len(manager.active),
-        "namespace":             NAMESPACE,
-        "services_mapped":       len(POD_SERVICE_MAP),
-    }
+    return {"status": "Aura Active", "version": "2.0.0", "nodes_online": len(AI_NODES), "watcher": "armed" if K8S_AVAILABLE else "disabled", "ast": "enabled" if JAVALANG_AVAILABLE else "fallback", "connections": len(manager.active), "namespace": NAMESPACE}
 
 @app.post("/analyze")
-async def analyze_incident(req: IncidentRequest):
-    file_path = find_file_recursively(REPO_BASE_PATH, req.file_name)
-    if not file_path:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Source file '{req.file_name}' not found in repo"
-        )
-
-    code_snippet, method_name = get_method_context(file_path, req.line_number)
-
-    prompt = (
-        f"Java crash analysis for pod '{req.pod_name}'.\n"
-        f"Method: {method_name}\n"
-        f"Error: {req.error_log}\n"
-        f"Code:\n{code_snippet}\n\n"
-        f"Provide root cause and exact fix."
-    )
-
-    analysis, node_used = await call_ai_with_failover(prompt)
-
-    return {
-        "pod":                 req.pod_name,
-        "source_file":         req.file_name,
-        "method":              method_name,
-        "root_cause_analysis": analysis,
-        "extracted_logic":     code_snippet,
-        "active_node":         node_used,
-        "qa_validation":       {"status": "PASSED", "verified_by": node_used}
-    }
+async def analyze(req: IncidentRequest):
+    fp = find_file(REPO_BASE_PATH, req.file_name)
+    if not fp: raise HTTPException(404, f"'{req.file_name}' not found")
+    code, method = get_method_context(fp, req.line_number)
+    analysis, node = await call_ai(f"Crash in pod '{req.pod_name}'. Method: {method}. Error: {req.error_log}. Code:\n{code}\n\nRoot cause and fix.")
+    return {"pod": req.pod_name, "source_file": req.file_name, "method": method, "root_cause_analysis": analysis, "extracted_logic": code, "active_node": node, "qa_validation": {"status": "PASSED", "verified_by": node}}
 
 @app.post("/chat")
-async def chat_with_aura(req: ChatRequest):
-    response, node_used = await call_ai_with_failover(
-        req.user_input,
-        system_message=(
-            f"You are Aura, an expert SRE AI assistant. "
-            f"Incident context: {req.context[:500]}"
-        )
-    )
-    return {"response": response, "node": node_used}
+async def chat(req: ChatRequest):
+    r, node = await call_ai(req.user_input, f"You are Aura, expert SRE AI. Context: {req.context[:500]}")
+    return {"response": r, "node": node}
 
 @app.get("/remediate")
-async def get_remediation_steps():
-    fixed_code = """package io.aura;
+async def remediate():
+    fixed = 'package io.aura;\npublic class AuthService {\n    public boolean validateToken(String token) {\n        if ("secret-key".equals(token)) return true;\n        return false;\n    }\n}'
+    qa = qa_validate(fixed)
+    if not qa["passed"]: return {"status": "BLOCKED", "reason": qa["report"], "qa": qa}
+    url = create_pr(fixed, "AuthService.java")
+    if url: return {"status": "SUCCESS", "pr_url": url, "qa": qa, "steps": [f"> aura-cli initiate --target {TARGET_REPO}", "📦 Authenticating...", "> git checkout -b hotfix-branch", f"🚀 PR: {url}", "✅ SYSTEM_STABILIZED."]}
+    return {"status": "FAILED", "steps": ["> Error: Check GITHUB_TOKEN"]}
 
-public class AuthService {
-
-    public boolean validateToken(String token) {
-        // Fix: Yoda condition prevents NullPointerException
-        if ("secret-key".equals(token)) return true;
-        return false;
-    }
-}"""
-
-    # Run QA validation before creating PR
-    qa_result = qa_validate_fix(fixed_code)
-
-    if not qa_result["passed"]:
-        return {
-            "status": "BLOCKED",
-            "reason": qa_result["report"],
-            "qa":     qa_result,
-        }
-
-    pr_url = trigger_github_remediation(fixed_code, "AuthService.java")
-    if pr_url:
-        return {
-            "status": "SUCCESS",
-            "pr_url": pr_url,
-            "qa":     qa_result,
-            "steps": [
-                f"> aura-cli initiate --target {TARGET_REPO}",
-                "📦 Authenticating with GitHub node...",
-                "> git checkout -b hotfix-branch",
-                f"🚀 Pull Request Dispatched: {pr_url}",
-                "✅ SYSTEM_STABILIZED."
-            ]
-        }
-    return {"status": "FAILED", "steps": ["> Error: Check GITHUB_TOKEN in .env"]}
-
-@app.post("/simulate/{service_name}")
-async def simulate_crash(service_name: str):
-    """
-    Manually trigger full RCA pipeline for any mapped service.
-    Used by Playground — works without Minikube running.
-    """
-    valid = list(POD_SERVICE_MAP.keys())
-    if service_name not in valid:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown service '{service_name}'. Valid: {valid}"
-        )
-    asyncio.create_task(handle_real_incident(
-        pod_name=service_name,
-        reason="SimulatedCrash",
-        message=f"Aura Playground: simulated BackOff on {service_name}"
-    ))
-    return {"status": "simulation_started", "pod": service_name}
+@app.post("/simulate/{service}")
+async def simulate(service: str):
+    if service not in POD_SERVICE_MAP: raise HTTPException(400, f"Unknown. Valid: {list(POD_SERVICE_MAP)}")
+    asyncio.create_task(handle_incident(service, "SimulatedCrash", f"Aura Playground: simulated BackOff on {service}"))
+    return {"status": "simulation_started", "pod": service}
 
 @app.get("/metrics")
-def get_metrics():
-    return {
-        **aura_metrics,
-        "active_connections":  len(manager.active),
-        "nodes_online":        len(ACTIVE_NODES),
-        "debounce_cache_size": len(seen_pods),
-        "namespace":           NAMESPACE,
-    }
+def metrics():
+    return {**aura_metrics, "connections": len(manager.active), "nodes": len(AI_NODES), "debounce_cache": len(seen_pods)}
 
 @app.get("/history")
-def get_history():
+def history():
     return {"incidents": incident_history, "total": len(incident_history)}
 
-# ─────────────────────────────────────────────────────────────────────────────
-# WEBSOCKET
-# ─────────────────────────────────────────────────────────────────────────────
-
 @app.websocket("/ws/incidents")
-async def websocket_incidents(websocket: WebSocket):
+async def ws_incidents(websocket: WebSocket):
     await manager.connect(websocket)
     try:
-        await websocket.send_text(json.dumps({
-            "type":         "connected",
-            "message":      "Aura Watcher armed. Monitoring cluster.",
-            "namespace":    NAMESPACE,
-            "nodes_online": len(ACTIVE_NODES),
-            "services":     list(POD_SERVICE_MAP.keys()),
-        }))
-        while True:
-            await websocket.receive_text()
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# ENTRY POINT
-# ─────────────────────────────────────────────────────────────────────────────
+        await websocket.send_text(json.dumps({"type": "connected", "message": "Aura armed.", "namespace": NAMESPACE, "nodes_online": len(AI_NODES), "services": list(POD_SERVICE_MAP)}))
+        while True: await websocket.receive_text()
+    except WebSocketDisconnect: manager.disconnect(websocket)
 
 if __name__ == "__main__":
     import uvicorn
