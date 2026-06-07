@@ -193,16 +193,23 @@ async def handle_incident(pod: str, reason: str, message: str):
     aura_metrics["incidents_detected"] += 1
     print(f"🚨 RCA triggered: {pod}")
 
-    await manager.broadcast({"type": "incident_detected", "pod": pod, "reason": reason, "message": message, "timestamp": now().isoformat(), "status": "analyzing"})
+    await manager.broadcast({
+        "type": "incident_detected", "pod": pod, "reason": reason,
+        "message": message, "timestamp": now().isoformat(), "status": "analyzing"
+    })
 
-    file_name, line_num   = extract_source(message, pod)
-    code, method          = "Source not found", "Unknown"
+    file_name, line_num = extract_source(message, pod)
+    code, method        = "Source not found", "Unknown"
     fp = find_file(REPO_BASE_PATH, file_name)
     if fp:
         code, method = get_method_context(fp, line_num)
         print(f"📂 {file_name} → {method}")
 
-    prompt = f"KUBERNETES INCIDENT\nPod: {pod}\nReason: {reason}\nEvent: {message}\nFile: {file_name}\nMethod: {method}\nCode:\n{code}\n\n1) Root cause. 2) Exact fix. 3) Prevention."
+    prompt = (
+        f"KUBERNETES INCIDENT\nPod: {pod}\nReason: {reason}\n"
+        f"Event: {message}\nFile: {file_name}\nMethod: {method}\n"
+        f"Code:\n{code}\n\n1) Root cause. 2) Exact fix. 3) Prevention."
+    )
 
     try:
         analysis, node = await call_ai(prompt)
@@ -210,10 +217,19 @@ async def handle_incident(pod: str, reason: str, message: str):
     except Exception as e:
         analysis, node = f"AI failed: {e}", "NONE"
 
-    await manager.broadcast({"type": "rca_complete", "pod": pod, "reason": reason, "root_cause_analysis": analysis, "extracted_logic": code, "method": method, "source_file": file_name, "active_node": node, "timestamp": now().isoformat(), "status": "complete"})
+    await manager.broadcast({
+        "type": "rca_complete", "pod": pod, "reason": reason,
+        "root_cause_analysis": analysis, "extracted_logic": code,
+        "method": method, "source_file": file_name,
+        "active_node": node, "timestamp": now().isoformat(), "status": "complete"
+    })
 
-    incident_history.append({"pod": pod, "reason": reason, "file": file_name, "method": method, "node": node, "timestamp": now().isoformat()})
-    if len(incident_history) > 10: incident_history.pop(0)
+    incident_history.append({
+        "pod": pod, "reason": reason, "file": file_name,
+        "method": method, "node": node, "timestamp": now().isoformat()
+    })
+    if len(incident_history) > 10:
+        incident_history.pop(0)
     print(f"✅ RCA done: {pod} via {node}")
 
 # ── K8s Watcher ───────────────────────────────────────────────────────────────
@@ -222,13 +238,18 @@ async def kubernetes_watcher():
         print("🚫 Watcher disabled.")
         return
     try:
-        k8s_config.load_incluster_config() if os.getenv("KUBE_IN_CLUSTER", "false").lower() == "true" else k8s_config.load_kube_config()
+        if os.getenv("KUBE_IN_CLUSTER", "false").lower() == "true":
+            k8s_config.load_incluster_config()
+        else:
+            k8s_config.load_kube_config()
         print("💻 Kubeconfig loaded.")
     except Exception as e:
         print(f"⚠️  Kubeconfig failed: {e}. Watcher disabled.")
         return
 
-    v1, w, loop = k8s_client.CoreV1Api(), watch.Watch(), asyncio.get_event_loop()
+    v1   = k8s_client.CoreV1Api()
+    w    = watch.Watch()
+    loop = asyncio.get_event_loop()
     print(f"👁️  Watching namespace: '{NAMESPACE}'")
 
     def watch_loop():
@@ -240,7 +261,9 @@ async def kubernetes_watcher():
                 if (obj.reason or "") not in WATCH_REASONS: continue
                 pod = obj.involved_object.name or "unknown"
                 print(f"🚨 {obj.reason} on '{pod}'")
-                asyncio.run_coroutine_threadsafe(handle_incident(pod, obj.reason or "", obj.message or ""), loop)
+                asyncio.run_coroutine_threadsafe(
+                    handle_incident(pod, obj.reason or "", obj.message or ""), loop
+                )
         except Exception as e:
             print(f"⚠️  Watcher error: {e}")
 
@@ -253,55 +276,119 @@ async def lifespan(app: FastAPI):
     print("🚀 Aura Engine online.")
     yield
     task.cancel()
-    try: await task
-    except asyncio.CancelledError: print("👁️  Watcher stopped.")
+    try:
+        await task
+    except asyncio.CancelledError:
+        print("👁️  Watcher stopped.")
 
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="Project Aura — AIOps Engine", version="2.0.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "https://aura-two-omega.vercel.app",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class IncidentRequest(BaseModel):
-    pod_name: str; file_name: str; line_number: int; error_log: str
+    pod_name: str
+    file_name: str
+    line_number: int
+    error_log: str
 
 class ChatRequest(BaseModel):
-    user_input: str; context: str
+    user_input: str
+    context: str
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.get("/health")
 def health():
-    return {"status": "Aura Active", "version": "2.0.0", "nodes_online": len(AI_NODES), "watcher": "armed" if K8S_AVAILABLE else "disabled", "ast": "enabled" if JAVALANG_AVAILABLE else "fallback", "connections": len(manager.active), "namespace": NAMESPACE}
+    return {
+        "status": "Aura Active", "version": "2.0.0",
+        "nodes_online": len(AI_NODES),
+        "watcher": "armed" if K8S_AVAILABLE else "disabled",
+        "ast": "enabled" if JAVALANG_AVAILABLE else "fallback",
+        "connections": len(manager.active),
+        "namespace": NAMESPACE,
+    }
 
 @app.post("/analyze")
 async def analyze(req: IncidentRequest):
     fp = find_file(REPO_BASE_PATH, req.file_name)
-    if not fp: raise HTTPException(404, f"'{req.file_name}' not found")
-    code, method = get_method_context(fp, req.line_number)
-    analysis, node = await call_ai(f"Crash in pod '{req.pod_name}'. Method: {method}. Error: {req.error_log}. Code:\n{code}\n\nRoot cause and fix.")
-    return {"pod": req.pod_name, "source_file": req.file_name, "method": method, "root_cause_analysis": analysis, "extracted_logic": code, "active_node": node, "qa_validation": {"status": "PASSED", "verified_by": node}}
+    if not fp:
+        raise HTTPException(404, f"'{req.file_name}' not found")
+    code, method   = get_method_context(fp, req.line_number)
+    analysis, node = await call_ai(
+        f"Crash in pod '{req.pod_name}'. Method: {method}. "
+        f"Error: {req.error_log}. Code:\n{code}\n\nRoot cause and fix."
+    )
+    return {
+        "pod": req.pod_name, "source_file": req.file_name,
+        "method": method, "root_cause_analysis": analysis,
+        "extracted_logic": code, "active_node": node,
+        "qa_validation": {"status": "PASSED", "verified_by": node}
+    }
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    r, node = await call_ai(req.user_input, f"You are Aura, expert SRE AI. Context: {req.context[:500]}")
+    r, node = await call_ai(
+        req.user_input,
+        f"You are Aura, expert SRE AI. Context: {req.context[:500]}"
+    )
     return {"response": r, "node": node}
 
 @app.get("/remediate")
 async def remediate():
-    fixed = 'package io.aura;\npublic class AuthService {\n    public boolean validateToken(String token) {\n        if ("secret-key".equals(token)) return true;\n        return false;\n    }\n}'
+    fixed = (
+        'package io.aura;\n'
+        'public class AuthService {\n'
+        '    public boolean validateToken(String token) {\n'
+        '        if ("secret-key".equals(token)) return true;\n'
+        '        return false;\n'
+        '    }\n'
+        '}'
+    )
     qa = qa_validate(fixed)
-    if not qa["passed"]: return {"status": "BLOCKED", "reason": qa["report"], "qa": qa}
+    if not qa["passed"]:
+        return {"status": "BLOCKED", "reason": qa["report"], "qa": qa}
     url = create_pr(fixed, "AuthService.java")
-    if url: return {"status": "SUCCESS", "pr_url": url, "qa": qa, "steps": [f"> aura-cli initiate --target {TARGET_REPO}", "📦 Authenticating...", "> git checkout -b hotfix-branch", f"🚀 PR: {url}", "✅ SYSTEM_STABILIZED."]}
+    if url:
+        return {
+            "status": "SUCCESS", "pr_url": url, "qa": qa,
+            "steps": [
+                f"> aura-cli initiate --target {TARGET_REPO}",
+                "📦 Authenticating...",
+                "> git checkout -b hotfix-branch",
+                f"🚀 PR: {url}",
+                "✅ SYSTEM_STABILIZED."
+            ]
+        }
     return {"status": "FAILED", "steps": ["> Error: Check GITHUB_TOKEN"]}
 
 @app.post("/simulate/{service}")
 async def simulate(service: str):
-    if service not in POD_SERVICE_MAP: raise HTTPException(400, f"Unknown. Valid: {list(POD_SERVICE_MAP)}")
-    asyncio.create_task(handle_incident(service, "SimulatedCrash", f"Aura Playground: simulated BackOff on {service}"))
+    if service not in POD_SERVICE_MAP:
+        raise HTTPException(400, f"Unknown. Valid: {list(POD_SERVICE_MAP)}")
+    asyncio.create_task(handle_incident(
+        service, "SimulatedCrash",
+        f"Aura Playground: simulated BackOff on {service}"
+    ))
     return {"status": "simulation_started", "pod": service}
 
 @app.get("/metrics")
 def metrics():
-    return {**aura_metrics, "connections": len(manager.active), "nodes": len(AI_NODES), "debounce_cache": len(seen_pods)}
+    return {
+        **aura_metrics,
+        "connections": len(manager.active),
+        "nodes": len(AI_NODES),
+        "debounce_cache": len(seen_pods)
+    }
 
 @app.get("/history")
 def history():
@@ -311,9 +398,15 @@ def history():
 async def ws_incidents(websocket: WebSocket):
     await manager.connect(websocket)
     try:
-        await websocket.send_text(json.dumps({"type": "connected", "message": "Aura armed.", "namespace": NAMESPACE, "nodes_online": len(AI_NODES), "services": list(POD_SERVICE_MAP)}))
-        while True: await websocket.receive_text()
-    except WebSocketDisconnect: manager.disconnect(websocket)
+        await websocket.send_text(json.dumps({
+            "type": "connected", "message": "Aura armed.",
+            "namespace": NAMESPACE, "nodes_online": len(AI_NODES),
+            "services": list(POD_SERVICE_MAP)
+        }))
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 if __name__ == "__main__":
     import uvicorn
