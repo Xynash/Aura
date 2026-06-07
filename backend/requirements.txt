@@ -1,6 +1,8 @@
 fastapi
-uvicorn
-kubernetes
-kafka-python
+uvicorn[standard]
 groq
 python-dotenv
+PyGitHub
+javalang
+kubernetes
+websockets
