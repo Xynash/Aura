@@ -8,7 +8,6 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { trackVisitor } from '../lib/supabase';
 
-// ── Constants ─────────────────────────────────────────────────────────────────
 const STORAGE_KEY = 'aura_visitor_v1';
 
 const techStack = [
@@ -31,6 +30,56 @@ const ROLES = [
   "Other"
 ];
 
+// ── Demo Player ───────────────────────────────────────────────────────────────
+const DemoPlayer = () => {
+  const [playing, setPlaying] = useState(false);
+
+  return (
+    <div className="aura-card w-full aspect-video rounded-[3rem] overflow-hidden relative border-white/10 bg-black/60">
+      {!playing ? (
+        <div
+          className="w-full h-full flex items-center justify-center cursor-pointer group relative"
+          onClick={() => setPlaying(true)}
+        >
+          <div className="absolute inset-0 bg-gradient-to-t from-[#bef35e]/5 to-transparent opacity-50" />
+          <div className="absolute inset-0 bg-digital-mesh opacity-10" />
+          <div className="z-10 flex flex-col items-center gap-6">
+            <motion.div
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
+              className="w-28 h-28 bg-[#bef35e] rounded-full flex items-center justify-center shadow-[0_0_60px_rgba(190,243,94,0.4)] transition-shadow group-hover:shadow-[0_0_80px_rgba(190,243,94,0.6)]"
+            >
+              <Play size={48} className="text-black ml-3" />
+            </motion.div>
+            <div className="text-center">
+              <p className="text-white font-black uppercase tracking-[0.3em] text-sm mb-2">
+                Watch Live Demo
+              </p>
+              <p className="text-zinc-500 font-mono text-[10px] uppercase tracking-widest">
+                Pod crash → AI analysis → GitHub PR · 3 min
+              </p>
+            </div>
+          </div>
+          <div className="absolute bottom-6 left-8 font-mono text-[9px] text-zinc-700 uppercase tracking-widest">
+            Aura_Core_Walkthrough.mp4
+          </div>
+          <div className="absolute bottom-6 right-8 font-mono text-[9px] text-[#bef35e]/40 uppercase tracking-widest">
+            Live · No edits · No cuts
+          </div>
+        </div>
+      ) : (
+        <iframe
+          className="w-full h-full"
+          src="https://drive.google.com/file/d/1EkTttuaDN-iTrksWRRQF8Kn1F1lomc6z/preview"
+          allow="autoplay"
+          allowFullScreen
+          title="Project Aura Demo"
+        />
+      )}
+    </div>
+  );
+};
+
 // ── Visitor Gate ──────────────────────────────────────────────────────────────
 const VisitorGate = ({
   onClearance,
@@ -47,31 +96,21 @@ const VisitorGate = ({
   const handleSubmit = async () => {
     if (!name.trim() || !role) return;
     setScanning(true);
-
     const token = `AURA-${name.replace(/\s+/g, '').toUpperCase().slice(0,4)}-${Date.now().toString(36).toUpperCase()}`;
-
-    // Save to localStorage first — instant, no network dependency
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       token, name, role, company, skipped: false, ts: Date.now()
     }));
-
-    // Track in Supabase (non-blocking)
     trackVisitor({ name, role, company, token, skipped: false });
-
     await new Promise(r => setTimeout(r, 2000));
     onClearance(token, name);
   };
 
   const handleSkip = () => {
-    // Store in localStorage so skip is remembered forever too
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       token: null, name: null, role: null, company: null,
       skipped: true, ts: Date.now()
     }));
-
-    // Track skip in Supabase
     trackVisitor({ skipped: true });
-
     onSkip();
   };
 
@@ -105,22 +144,18 @@ const VisitorGate = ({
       className="fixed inset-0 z-[300] bg-black/95 backdrop-blur flex items-center justify-center px-6"
     >
       <div className="galactic-bg" />
-
-      {/* Skip button */}
       <button
         onClick={handleSkip}
         className="absolute top-6 right-6 z-10 flex items-center gap-2 text-zinc-600 hover:text-white text-[10px] font-black uppercase tracking-widest transition-all"
       >
         Skip <X size={14} />
       </button>
-
       <motion.div
         initial={{ y: 40, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ delay: 0.2 }}
         className="relative w-full max-w-lg"
       >
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-3 mb-5">
             <div className="w-12 h-12 bg-[#bef35e] rounded-xl flex items-center justify-center shadow-[0_0_30px_rgba(190,243,94,0.4)]">
@@ -141,11 +176,7 @@ const VisitorGate = ({
             Personalise your experience — completely optional.
           </p>
         </div>
-
-        {/* Form */}
         <div className="aura-card-modern p-8 space-y-5 border-white/10 bg-black/60 backdrop-blur">
-
-          {/* Name */}
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest flex items-center gap-2">
               <User size={10} /> Operator Name
@@ -159,8 +190,6 @@ const VisitorGate = ({
               className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-sm text-white focus:border-[#bef35e] outline-none transition-all placeholder:text-zinc-700 font-mono"
             />
           </div>
-
-          {/* Role */}
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest flex items-center gap-2">
               <Shield size={10} /> Your Role
@@ -181,8 +210,6 @@ const VisitorGate = ({
               ))}
             </div>
           </div>
-
-          {/* Company */}
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest flex items-center gap-2">
               <Building2 size={10} /> Company / Institution
@@ -196,8 +223,6 @@ const VisitorGate = ({
               className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-sm text-white focus:border-[#bef35e] outline-none transition-all placeholder:text-zinc-700 font-mono"
             />
           </div>
-
-          {/* Submit */}
           <button
             onClick={handleSubmit}
             disabled={!name.trim() || !role}
@@ -205,7 +230,6 @@ const VisitorGate = ({
           >
             Request Clearance <ChevronRight size={16} />
           </button>
-
           <p className="text-center text-[9px] text-zinc-700 font-mono leading-relaxed">
             This information personalises your experience and is stored securely.<br/>
             Nothing is sold or shared. Ever.
@@ -236,28 +260,22 @@ const ClearanceBadge = ({ token, name }: { token: string; name: string }) => (
 // ── Landing Page ───────────────────────────────────────────────────────────────
 const Landing = ({ setSystemStatus, systemStatus }: any) => {
   const navigate = useNavigate();
-
   const [showGate,       setShowGate]       = useState(false);
   const [clearanceToken, setClearanceToken] = useState('');
   const [visitorName,    setVisitorName]    = useState('');
 
-  // ── Check localStorage on mount ───────────────────────────────────────────
   useEffect(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        // Already visited — never show gate again
         const data = JSON.parse(stored);
         if (data.token) {
           setClearanceToken(data.token);
           setVisitorName(data.name || '');
         }
-        // skipped = true → no badge, no gate, just land
         return;
       }
-    } catch { /* corrupt storage — ignore */ }
-
-    // First time visitor — show gate after short delay
+    } catch { /* ignore */ }
     const t = setTimeout(() => setShowGate(true), 1200);
     return () => clearTimeout(t);
   }, []);
@@ -268,11 +286,8 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
     setShowGate(false);
   };
 
-  const handleSkip = () => {
-    setShowGate(false);
-  };
+  const handleSkip = () => setShowGate(false);
 
-  // ── Launch engine ─────────────────────────────────────────────────────────
   const launchEngine = async () => {
     setSystemStatus('initializing');
     try {
@@ -293,7 +308,6 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
     document.getElementById('system-demo')?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // ── Initializing screen ───────────────────────────────────────────────────
   if (systemStatus === 'initializing') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#020617] relative">
@@ -323,7 +337,6 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
   return (
     <div className="relative min-h-screen">
 
-      {/* Visitor Gate — only for first-time visitors */}
       <AnimatePresence>
         {showGate && (
           <VisitorGate
@@ -333,7 +346,6 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
         )}
       </AnimatePresence>
 
-      {/* Clearance badge — only if they filled the form */}
       {clearanceToken && visitorName && (
         <ClearanceBadge token={clearanceToken} name={visitorName} />
       )}
@@ -343,8 +355,10 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
       {/* ── HERO ── */}
       <section className="pt-56 pb-32 max-w-7xl mx-auto px-10 grid grid-cols-12 gap-16 items-center">
         <div className="col-span-12 lg:col-span-7">
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            className="text-[#bef35e] font-bold text-xs uppercase tracking-[0.4em] mb-6">
+          <motion.p
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="text-[#bef35e] font-bold text-xs uppercase tracking-[0.4em] mb-6"
+          >
             Source-Aware AIOps Infrastructure
           </motion.p>
           <h1 className="text-7xl md:text-8xl font-black tracking-tighter mb-8 leading-[0.9] text-white">
@@ -355,8 +369,6 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
             Automate Root Cause Analysis by bridging Kubernetes infrastructure
             events to your application source logic instantly.
           </p>
-
-          {/* Personalised greeting */}
           {visitorName && (
             <motion.p
               initial={{ opacity: 0, x: -10 }}
@@ -366,7 +378,6 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
               Welcome back, <span className="text-[#bef35e]">{visitorName}</span>
             </motion.p>
           )}
-
           <div className="flex gap-4 flex-wrap">
             <button
               onClick={launchEngine}
@@ -422,10 +433,10 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          <Step num="01" icon={<Search />}      title="Detect"  desc="K8s watcher streams real V1Events — no polling, no button." />
-          <Step num="02" icon={<Terminal />}     title="Extract" desc="Java AST parser finds the exact failing method in source code." />
-          <Step num="03" icon={<Cpu />}          title="Reason"  desc="Llama 3.3 70B analyzes code + crash log for root cause." />
-          <Step num="04" icon={<CheckCircle />}  title="Heal"    desc="GitHub PR created automatically. Engineer reviews and merges." />
+          <Step num="01" icon={<Search />}     title="Detect"  desc="K8s watcher streams real V1Events — no polling, no button." />
+          <Step num="02" icon={<Terminal />}    title="Extract" desc="Java AST parser finds the exact failing method in source code." />
+          <Step num="03" icon={<Cpu />}         title="Reason"  desc="Llama 3.3 70B analyzes code + crash log for root cause." />
+          <Step num="04" icon={<CheckCircle />} title="Heal"    desc="GitHub PR created automatically. Engineer reviews and merges." />
         </div>
       </section>
 
@@ -436,25 +447,10 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
             System Architecture & Demo
           </h2>
           <p className="text-zinc-500 uppercase tracking-widest text-[10px] font-black italic">
-            Technical walkthrough of Aura's core engine
+            Live demonstration — autonomous pod crash to GitHub PR in 30 seconds
           </p>
         </div>
-        <div className="aura-card w-full aspect-video rounded-[3rem] overflow-hidden relative group cursor-pointer border-white/10 bg-black/60 flex items-center justify-center">
-          <div className="absolute inset-0 bg-gradient-to-t from-[#bef35e]/5 to-transparent opacity-50" />
-          <div className="z-10 flex flex-col items-center gap-6">
-            <div className="w-24 h-24 bg-[#bef35e] rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(190,243,94,0.3)] group-hover:scale-110 transition-transform duration-500">
-              <Play size={40} className="text-black ml-2" />
-            </div>
-            <div className="text-center">
-              <p className="text-white font-black uppercase tracking-[0.3em] text-xs mb-2">
-                Initialize System Walkthrough
-              </p>
-              <p className="text-zinc-500 font-mono text-[10px]">
-                AURA_CORE_WALKTHROUGH.MP4 // Demo Coming Soon
-              </p>
-            </div>
-          </div>
-        </div>
+        <DemoPlayer />
       </section>
 
     </div>
