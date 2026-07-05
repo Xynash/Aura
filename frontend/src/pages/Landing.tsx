@@ -3,47 +3,76 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowRight, Cpu, Code, Terminal, CheckCircle,
   Search, Database, Zap, Activity, Globe, Play,
-  Shield, User, Building2, ChevronRight, Fingerprint
+  Shield, User, Building2, ChevronRight, Fingerprint, X
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { trackVisitor } from '../lib/supabase';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+const STORAGE_KEY = 'aura_visitor_v1';
 
 const techStack = [
-  { name: "Kubernetes", icon: <Database size={14}/> },
+  { name: "Kubernetes",   icon: <Database size={14}/> },
   { name: "Apache Kafka", icon: <Zap size={14}/> },
-  { name: "Llama 3 AI", icon: <Cpu size={14}/> },
-  { name: "Java 21", icon: <Code size={14}/> },
-  { name: "AST Engine", icon: <Terminal size={14}/> },
-  { name: "Fabric8", icon: <Globe size={14}/> },
+  { name: "Llama 3 AI",  icon: <Cpu size={14}/> },
+  { name: "Java 21",     icon: <Code size={14}/> },
+  { name: "AST Engine",  icon: <Terminal size={14}/> },
+  { name: "Fabric8",     icon: <Globe size={14}/> },
   { name: "Spring Boot", icon: <Activity size={14}/> }
 ];
 
-// ── Visitor Gate Form ─────────────────────────────────────────────────────────
-const VisitorGate = ({ onClearance }: { onClearance: (token: string) => void }) => {
-  const [step,     setStep]     = useState(0);
+const ROLES = [
+  "Software Engineer",
+  "DevOps / SRE",
+  "Engineering Manager",
+  "Recruiter / HR",
+  "Student",
+  "Researcher",
+  "Other"
+];
+
+// ── Visitor Gate ──────────────────────────────────────────────────────────────
+const VisitorGate = ({
+  onClearance,
+  onSkip,
+}: {
+  onClearance: (token: string, name: string) => void;
+  onSkip: () => void;
+}) => {
   const [name,     setName]     = useState('');
   const [role,     setRole]     = useState('');
   const [company,  setCompany]  = useState('');
   const [scanning, setScanning] = useState(false);
 
-  const roles = [
-    "Software Engineer",
-    "DevOps / SRE",
-    "Engineering Manager",
-    "Recruiter / HR",
-    "Student",
-    "Researcher",
-    "Other"
-  ];
-
   const handleSubmit = async () => {
     if (!name.trim() || !role) return;
     setScanning(true);
-    await new Promise(r => setTimeout(r, 2500));
+
     const token = `AURA-${name.replace(/\s+/g, '').toUpperCase().slice(0,4)}-${Date.now().toString(36).toUpperCase()}`;
-    sessionStorage.setItem('visitorToken', token);
-    sessionStorage.setItem('visitorName',  name);
-    sessionStorage.setItem('visitorRole',  role);
-    onClearance(token);
+
+    // Save to localStorage first — instant, no network dependency
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      token, name, role, company, skipped: false, ts: Date.now()
+    }));
+
+    // Track in Supabase (non-blocking)
+    trackVisitor({ name, role, company, token, skipped: false });
+
+    await new Promise(r => setTimeout(r, 2000));
+    onClearance(token, name);
+  };
+
+  const handleSkip = () => {
+    // Store in localStorage so skip is remembered forever too
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      token: null, name: null, role: null, company: null,
+      skipped: true, ts: Date.now()
+    }));
+
+    // Track skip in Supabase
+    trackVisitor({ skipped: true });
+
+    onSkip();
   };
 
   if (scanning) {
@@ -73,25 +102,33 @@ const VisitorGate = ({ onClearance }: { onClearance: (token: string) => void }) 
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-      className="fixed inset-0 z-[300] bg-black flex items-center justify-center px-6"
+      className="fixed inset-0 z-[300] bg-black/95 backdrop-blur flex items-center justify-center px-6"
     >
       <div className="galactic-bg" />
+
+      {/* Skip button */}
+      <button
+        onClick={handleSkip}
+        className="absolute top-6 right-6 z-10 flex items-center gap-2 text-zinc-600 hover:text-white text-[10px] font-black uppercase tracking-widest transition-all"
+      >
+        Skip <X size={14} />
+      </button>
 
       <motion.div
         initial={{ y: 40, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        transition={{ delay: 0.3 }}
+        transition={{ delay: 0.2 }}
         className="relative w-full max-w-lg"
       >
         {/* Header */}
-        <div className="text-center mb-10">
-          <div className="flex items-center justify-center gap-3 mb-6">
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-3 mb-5">
             <div className="w-12 h-12 bg-[#bef35e] rounded-xl flex items-center justify-center shadow-[0_0_30px_rgba(190,243,94,0.4)]">
               <Activity size={24} className="text-black" />
             </div>
             <span className="text-2xl font-black tracking-tighter uppercase text-white">Aura</span>
           </div>
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-[#bef35e]/30 bg-[#bef35e]/5 mb-6">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-[#bef35e]/30 bg-[#bef35e]/5 mb-5">
             <Fingerprint size={12} className="text-[#bef35e]" />
             <span className="text-[#bef35e] font-mono text-[10px] uppercase tracking-widest">
               Security Clearance Required
@@ -101,12 +138,12 @@ const VisitorGate = ({ onClearance }: { onClearance: (token: string) => void }) 
             Identify Yourself
           </h2>
           <p className="text-zinc-500 text-sm font-mono">
-            Access to Aura's neural systems requires operator identification.
+            Personalise your experience — completely optional.
           </p>
         </div>
 
         {/* Form */}
-        <div className="aura-card-modern p-8 space-y-6 border-white/10 bg-black/60 backdrop-blur">
+        <div className="aura-card-modern p-8 space-y-5 border-white/10 bg-black/60 backdrop-blur">
 
           {/* Name */}
           <div className="space-y-2">
@@ -117,6 +154,7 @@ const VisitorGate = ({ onClearance }: { onClearance: (token: string) => void }) 
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSubmit()}
               placeholder="Enter your name..."
               className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-sm text-white focus:border-[#bef35e] outline-none transition-all placeholder:text-zinc-700 font-mono"
             />
@@ -128,7 +166,7 @@ const VisitorGate = ({ onClearance }: { onClearance: (token: string) => void }) 
               <Shield size={10} /> Your Role
             </label>
             <div className="grid grid-cols-2 gap-2">
-              {roles.map(r => (
+              {ROLES.map(r => (
                 <button
                   key={r}
                   onClick={() => setRole(r)}
@@ -144,17 +182,17 @@ const VisitorGate = ({ onClearance }: { onClearance: (token: string) => void }) 
             </div>
           </div>
 
-          {/* Company (optional) */}
+          {/* Company */}
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest flex items-center gap-2">
               <Building2 size={10} /> Company / Institution
-              <span className="text-zinc-700 normal-case font-normal">(optional)</span>
+              <span className="text-zinc-700 normal-case font-normal tracking-normal">(optional)</span>
             </label>
             <input
               type="text"
               value={company}
               onChange={e => setCompany(e.target.value)}
-              placeholder="Where do you work?"
+              placeholder="Where do you work or study?"
               className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4 text-sm text-white focus:border-[#bef35e] outline-none transition-all placeholder:text-zinc-700 font-mono"
             />
           </div>
@@ -168,8 +206,9 @@ const VisitorGate = ({ onClearance }: { onClearance: (token: string) => void }) 
             Request Clearance <ChevronRight size={16} />
           </button>
 
-          <p className="text-center text-[9px] text-zinc-700 font-mono">
-            This information is used only to personalize your experience. Nothing is stored externally.
+          <p className="text-center text-[9px] text-zinc-700 font-mono leading-relaxed">
+            This information personalises your experience and is stored securely.<br/>
+            Nothing is sold or shared. Ever.
           </p>
         </div>
       </motion.div>
@@ -177,7 +216,7 @@ const VisitorGate = ({ onClearance }: { onClearance: (token: string) => void }) 
   );
 };
 
-// ── Clearance Token Display ───────────────────────────────────────────────────
+// ── Clearance Badge ────────────────────────────────────────────────────────────
 const ClearanceBadge = ({ token, name }: { token: string; name: string }) => (
   <motion.div
     initial={{ opacity: 0, y: -20 }}
@@ -194,32 +233,46 @@ const ClearanceBadge = ({ token, name }: { token: string; name: string }) => (
   </motion.div>
 );
 
-// ── Landing Page ──────────────────────────────────────────────────────────────
+// ── Landing Page ───────────────────────────────────────────────────────────────
 const Landing = ({ setSystemStatus, systemStatus }: any) => {
   const navigate = useNavigate();
-  const [showGate,      setShowGate]      = useState(false);
-  const [clearanceToken, setClearanceToken] = useState('');
-  const [visitorName,   setVisitorName]   = useState('');
 
+  const [showGate,       setShowGate]       = useState(false);
+  const [clearanceToken, setClearanceToken] = useState('');
+  const [visitorName,    setVisitorName]    = useState('');
+
+  // ── Check localStorage on mount ───────────────────────────────────────────
   useEffect(() => {
-    const existing = sessionStorage.getItem('visitorToken');
-    const name     = sessionStorage.getItem('visitorName');
-    if (existing && name) {
-      setClearanceToken(existing);
-      setVisitorName(name);
-    } else {
-      // Show gate after 1.5s
-      const t = setTimeout(() => setShowGate(true), 1500);
-      return () => clearTimeout(t);
-    }
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        // Already visited — never show gate again
+        const data = JSON.parse(stored);
+        if (data.token) {
+          setClearanceToken(data.token);
+          setVisitorName(data.name || '');
+        }
+        // skipped = true → no badge, no gate, just land
+        return;
+      }
+    } catch { /* corrupt storage — ignore */ }
+
+    // First time visitor — show gate after short delay
+    const t = setTimeout(() => setShowGate(true), 1200);
+    return () => clearTimeout(t);
   }, []);
 
-  const handleClearance = (token: string) => {
+  const handleClearance = (token: string, name: string) => {
     setClearanceToken(token);
-    setVisitorName(sessionStorage.getItem('visitorName') || '');
+    setVisitorName(name);
     setShowGate(false);
   };
 
+  const handleSkip = () => {
+    setShowGate(false);
+  };
+
+  // ── Launch engine ─────────────────────────────────────────────────────────
   const launchEngine = async () => {
     setSystemStatus('initializing');
     try {
@@ -229,9 +282,7 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
           setSystemStatus('active');
           navigate('/dashboard');
         }, 3000);
-      } else {
-        throw new Error();
-      }
+      } else throw new Error();
     } catch {
       setSystemStatus('offline');
       setTimeout(() => setSystemStatus('idle'), 4000);
@@ -242,6 +293,7 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
     document.getElementById('system-demo')?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // ── Initializing screen ───────────────────────────────────────────────────
   if (systemStatus === 'initializing') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#020617] relative">
@@ -270,40 +322,52 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
 
   return (
     <div className="relative min-h-screen">
-      {/* Visitor Gate */}
+
+      {/* Visitor Gate — only for first-time visitors */}
       <AnimatePresence>
-        {showGate && <VisitorGate onClearance={handleClearance} />}
+        {showGate && (
+          <VisitorGate
+            onClearance={handleClearance}
+            onSkip={handleSkip}
+          />
+        )}
       </AnimatePresence>
 
-      {/* Clearance badge */}
-      {clearanceToken && <ClearanceBadge token={clearanceToken} name={visitorName} />}
+      {/* Clearance badge — only if they filled the form */}
+      {clearanceToken && visitorName && (
+        <ClearanceBadge token={clearanceToken} name={visitorName} />
+      )}
 
       <div className="galactic-bg" />
 
-      {/* Hero */}
+      {/* ── HERO ── */}
       <section className="pt-56 pb-32 max-w-7xl mx-auto px-10 grid grid-cols-12 gap-16 items-center">
         <div className="col-span-12 lg:col-span-7">
-          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-[#bef35e] font-bold text-xs uppercase tracking-[0.4em] mb-6">
+          <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+            className="text-[#bef35e] font-bold text-xs uppercase tracking-[0.4em] mb-6">
             Source-Aware AIOps Infrastructure
           </motion.p>
           <h1 className="text-7xl md:text-8xl font-black tracking-tighter mb-8 leading-[0.9] text-white">
-            The Context Gap <br /><span className="text-zinc-700 italic">Closed Forever.</span>
+            The Context Gap <br />
+            <span className="text-zinc-700 italic">Closed Forever.</span>
           </h1>
           <p className="text-zinc-400 max-w-lg text-xl leading-relaxed mb-12">
-            Automate Root Cause Analysis by bridging Kubernetes infrastructure events
-            to your application source logic instantly.
+            Automate Root Cause Analysis by bridging Kubernetes infrastructure
+            events to your application source logic instantly.
           </p>
-          {/* Personalized greeting */}
+
+          {/* Personalised greeting */}
           {visitorName && (
             <motion.p
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               className="text-zinc-500 font-mono text-xs mb-6 uppercase tracking-widest"
             >
-              Welcome, <span className="text-[#bef35e]">{visitorName}</span> — clearance active
+              Welcome back, <span className="text-[#bef35e]">{visitorName}</span>
             </motion.p>
           )}
-          <div className="flex gap-4">
+
+          <div className="flex gap-4 flex-wrap">
             <button
               onClick={launchEngine}
               className="bg-[#bef35e] text-black px-10 py-4 rounded-full font-black uppercase text-xs tracking-widest flex items-center gap-2 hover:shadow-[0_0_30px_rgba(190,243,94,0.3)] transition-all"
@@ -327,46 +391,53 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
             </div>
             <div className="absolute w-40 h-40 border border-dashed border-white/10 rounded-full" />
             <div className="absolute w-64 h-64 border border-dashed border-white/10 rounded-full" />
-            <div className="absolute w-88 h-88 border border-dashed border-white/10 rounded-full" />
-            <Planet radius={80}  speed={10} icon={<Database size={16} className="text-blue-400" />} />
-            <Planet radius={128} speed={15} icon={<Zap size={16} className="text-orange-400" />} />
-            <Planet radius={128} speed={15} delay={7.5} icon={<Cpu size={16} className="text-purple-400" />} />
-            <Planet radius={180} speed={25} icon={<Code size={16} className="text-[#bef35e]" />} />
+            <Planet radius={80}  speed={10}  icon={<Database size={16} className="text-blue-400" />} />
+            <Planet radius={128} speed={15}  icon={<Zap size={16} className="text-orange-400" />} />
+            <Planet radius={128} speed={15}  delay={7.5} icon={<Cpu size={16} className="text-purple-400" />} />
+            <Planet radius={180} speed={25}  icon={<Code size={16} className="text-[#bef35e]" />} />
           </div>
         </div>
       </section>
 
-      {/* Marquee */}
+      {/* ── MARQUEE ── */}
       <div className="w-full border-y border-white/5 bg-white/[0.01] py-10 overflow-hidden mb-32">
         <div className="animate-marquee">
           {[...techStack, ...techStack, ...techStack].map((tech, i) => (
             <div key={i} className="flex items-center gap-4 mx-16">
               <div className="text-[#bef35e]">{tech.icon}</div>
-              <span className="text-sm font-black uppercase tracking-[0.3em] text-zinc-500 whitespace-nowrap italic">{tech.name}</span>
+              <span className="text-sm font-black uppercase tracking-[0.3em] text-zinc-500 whitespace-nowrap italic">
+                {tech.name}
+              </span>
             </div>
           ))}
         </div>
       </div>
 
-      {/* How it works */}
+      {/* ── HOW IT WORKS ── */}
       <section className="max-w-7xl mx-auto px-10 py-32 border-b border-white/5">
         <div className="text-center mb-24">
-          <h2 className="text-5xl font-black tracking-tighter mb-4">How it Works</h2>
-          <p className="text-zinc-500 uppercase tracking-widest text-xs font-bold italic">Autonomous Remediation Lifecycle</p>
+          <h2 className="text-5xl font-black tracking-tighter mb-4 text-white">How it Works</h2>
+          <p className="text-zinc-500 uppercase tracking-widest text-xs font-bold italic">
+            Autonomous Remediation Lifecycle
+          </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          <Step num="01" icon={<Search />} title="Detect"   desc="K8s watcher streams real V1Events — no polling, no button." />
-          <Step num="02" icon={<Terminal />} title="Extract" desc="Java AST parser finds the exact failing method in source code." />
-          <Step num="03" icon={<Cpu />}     title="Reason"  desc="Llama 3.3 70B analyzes code + crash log for root cause." />
-          <Step num="04" icon={<CheckCircle />} title="Heal" desc="GitHub PR created automatically. Engineer reviews and merges." />
+          <Step num="01" icon={<Search />}      title="Detect"  desc="K8s watcher streams real V1Events — no polling, no button." />
+          <Step num="02" icon={<Terminal />}     title="Extract" desc="Java AST parser finds the exact failing method in source code." />
+          <Step num="03" icon={<Cpu />}          title="Reason"  desc="Llama 3.3 70B analyzes code + crash log for root cause." />
+          <Step num="04" icon={<CheckCircle />}  title="Heal"    desc="GitHub PR created automatically. Engineer reviews and merges." />
         </div>
       </section>
 
-      {/* Demo section */}
+      {/* ── DEMO SECTION ── */}
       <section id="system-demo" className="max-w-7xl mx-auto px-10 py-32 mb-40">
         <div className="text-center mb-16">
-          <h2 className="text-5xl font-black tracking-tighter mb-4 text-white">System Architecture & Demo</h2>
-          <p className="text-zinc-500 uppercase tracking-widest text-[10px] font-black italic">Technical walkthrough of Aura's core engine</p>
+          <h2 className="text-5xl font-black tracking-tighter mb-4 text-white">
+            System Architecture & Demo
+          </h2>
+          <p className="text-zinc-500 uppercase tracking-widest text-[10px] font-black italic">
+            Technical walkthrough of Aura's core engine
+          </p>
         </div>
         <div className="aura-card w-full aspect-video rounded-[3rem] overflow-hidden relative group cursor-pointer border-white/10 bg-black/60 flex items-center justify-center">
           <div className="absolute inset-0 bg-gradient-to-t from-[#bef35e]/5 to-transparent opacity-50" />
@@ -375,20 +446,34 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
               <Play size={40} className="text-black ml-2" />
             </div>
             <div className="text-center">
-              <p className="text-white font-black uppercase tracking-[0.3em] text-xs mb-2">Initialize System Walkthrough</p>
-              <p className="text-zinc-500 font-mono text-[10px]">AURA_CORE_WALKTHROUGH.MP4 // 4K RESOLUTION</p>
+              <p className="text-white font-black uppercase tracking-[0.3em] text-xs mb-2">
+                Initialize System Walkthrough
+              </p>
+              <p className="text-zinc-500 font-mono text-[10px]">
+                AURA_CORE_WALKTHROUGH.MP4 // Demo Coming Soon
+              </p>
             </div>
           </div>
         </div>
       </section>
+
     </div>
   );
 };
 
+// ── Sub-components ─────────────────────────────────────────────────────────────
 const Planet = ({ radius, speed, icon, delay = 0 }: any) => (
-  <motion.div style={{ position: 'absolute' }} animate={{ rotate: 360 }} transition={{ duration: speed, repeat: Infinity, ease: "linear", delay: -delay }}>
+  <motion.div
+    style={{ position: 'absolute' }}
+    animate={{ rotate: 360 }}
+    transition={{ duration: speed, repeat: Infinity, ease: "linear", delay: -delay }}
+  >
     <div style={{ transform: `translateX(${radius}px)` }}>
-      <motion.div animate={{ rotate: -360 }} transition={{ duration: speed, repeat: Infinity, ease: "linear", delay: -delay }} className="p-3 bg-black/40 border border-white/10 rounded-xl backdrop-blur-md">
+      <motion.div
+        animate={{ rotate: -360 }}
+        transition={{ duration: speed, repeat: Infinity, ease: "linear", delay: -delay }}
+        className="p-3 bg-black/40 border border-white/10 rounded-xl backdrop-blur-md"
+      >
         {icon}
       </motion.div>
     </div>
@@ -403,7 +488,7 @@ const Step = ({ num, icon, title, desc }: any) => (
       </div>
       <span className="text-2xl font-black text-white/5 italic">{num}</span>
     </div>
-    <h4 className="text-xl font-bold mb-3 uppercase tracking-tighter">{title}</h4>
+    <h4 className="text-xl font-bold mb-3 uppercase tracking-tighter text-white">{title}</h4>
     <p className="text-zinc-500 text-sm leading-relaxed">{desc}</p>
   </div>
 );

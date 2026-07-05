@@ -7,3 +7,6 @@ export const WS_URL = import.meta.env.PROD
   : "wss://aura-backend-33nm.onrender.com";
 
 export const AURA_KEY = import.meta.env.VITE_AURA_KEY || "";
+
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || "https://nvariaoaltktxwvgxzkx.supabase.co";
+export const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || "";
