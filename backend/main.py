@@ -359,7 +359,7 @@ async def remediate():
     qa = qa_validate(fixed)
     if not qa["passed"]:
         return {"status": "BLOCKED", "reason": qa["report"], "qa": qa}
-    url = create_pr(fixed, "AuthService.java")
+    url = await asyncio.to_thread(create_pr, fixed, "AuthService.java")
     if url:
         return {
             "status": "SUCCESS", "pr_url": url, "qa": qa,
