@@ -1,8 +1,8 @@
-fastapi
-uvicorn[standard]
-groq
-python-dotenv
-PyGitHub
-javalang
-kubernetes
-websockets
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+groq==1.7.0
+python-dotenv==1.2.3
+PyGitHub==2.10.0
+javalang==0.13.0
+kubernetes==36.0.3
+websockets==17.1

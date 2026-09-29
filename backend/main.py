@@ -150,7 +150,9 @@ async def call_ai(prompt: str, system: str = "You are a specialized SRE agent. B
     for node in AI_NODES:
         try:
             print(f"🧠 Neural link via {node['name']}...")
-            r = Groq(api_key=node["key"]).chat.completions.create(
+            client = Groq(api_key=node["key"])
+            r = await asyncio.to_thread(
+                client.chat.completions.create,
                 model="openai/gpt-oss-120b",
                 messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
                 temperature=0.2, max_tokens=1000,
