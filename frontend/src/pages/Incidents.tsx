@@ -9,6 +9,7 @@ import {
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import { useAuraSocket } from '../hooks/useAuraSocket';
+import { getOwnerKey } from '../lib/ownerAuth';
 
 const Incidents = () => {
   const [analysisStep,        setAnalysisStep]        = useState(0);
@@ -142,7 +143,10 @@ const Incidents = () => {
     setIsRemediating(true);
     setTerminalLines(["> Initializing Aura Subspace Remediation Protocol..."]);
     try {
-      const res  = await fetch("https://aura-backend-33nm.onrender.com/remediate");
+      const res  = await fetch("https://aura-backend-33nm.onrender.com/remediate", {
+        method: "POST",
+        headers: { "X-Aura-Key": getOwnerKey() },
+      });
       const data = await res.json();
 
       // Show QA result

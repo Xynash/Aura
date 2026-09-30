@@ -345,8 +345,11 @@ async def chat(req: ChatRequest):
     )
     return {"response": r, "node": node}
 
-@app.get("/remediate")
-async def remediate():
+@app.post("/remediate")
+async def remediate(x_aura_key: str = Header(default="")):
+    owner = os.getenv("AURA_OWNER_KEY", "")
+    if not owner or x_aura_key != owner:
+        raise HTTPException(403, "Owner key required")
     fixed = (
         'package io.aura;\n'
         'public class AuthService {\n'
