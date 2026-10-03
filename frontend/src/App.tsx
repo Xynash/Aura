@@ -37,7 +37,8 @@ const AnimatedRoutes = ({
 };
 
 const App: React.FC = () => {
-  const [systemStatus,   setSystemStatus]   = useState<SystemStatus>('idle');
+  const [systemStatus,   setSystemStatus]   = useState<SystemStatus>((typeof window !== 'undefined' && sessionStorage.getItem('aura_system_status') === 'active') ? 'active' : 'idle');
+  useEffect(() => { try { sessionStorage.setItem('aura_system_status', systemStatus); } catch { /* ignore */ } }, [systemStatus]);
   const [watcherStatus,  setWatcherStatus]  = useState<WatcherStatus>('connecting');
   const [incidentCount,  setIncidentCount]  = useState(0);
 
