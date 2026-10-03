@@ -48,7 +48,7 @@ const SERVICE_META: Record<SimService, {
 const STEPS = [
   { id: 1, label: "Pick Service",  desc: "Choose which microservice to crash" },
   { id: 2, label: "Inject Fault",  desc: "Aura detects the pod failure"       },
-  { id: 3, label: "AI Analysis",   desc: "Llama 3.3 reads the source code"    },
+  { id: 3, label: "AI Analysis",   desc: "gpt-oss-120b reads the source code"    },
   { id: 4, label: "RCA Complete",  desc: "Root cause + fix generated"         },
 ];
 
@@ -154,7 +154,7 @@ const Playground = () => {
     try {
       const res  = await fetch(`${API_URL}/simulate/${service}`, { method: "POST" });
       const data = await res.json();
-      if (data.status !== "simulation_started") throw new Error(data.detail || "Unknown error");
+      if (data.status !== "simulation_started") throw new Error(data.detail || data.error || "Unknown error");
     } catch (e: any) {
       setSimError(e.message || "Backend unreachable");
       setSimState("error");
@@ -273,7 +273,7 @@ const Playground = () => {
                     {[
                       { step: "1", title: "You pick a service", desc: "Choose Auth, Payment, or Inventory — each has a real Java bug." },
                       { step: "2", title: "Backend simulates crash", desc: "The /simulate endpoint fires the full RCA pipeline as if K8s detected it." },
-                      { step: "3", title: "AI reads source code", desc: "Llama 3.3 gets the actual Java method + crash context via AST parsing." },
+                      { step: "3", title: "AI reads source code", desc: "gpt-oss-120b gets the actual Java method + crash context via AST parsing." },
                       { step: "4", title: "Root cause appears", desc: "Real AI analysis. Real fix. Real GitHub PR if you click Apply Hotfix in the Lab." },
                     ].map(item => (
                       <div key={item.step} className="space-y-2">

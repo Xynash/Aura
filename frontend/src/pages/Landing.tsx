@@ -13,7 +13,7 @@ const STORAGE_KEY = 'aura_visitor_v1';
 const techStack = [
   { name: "Kubernetes",   icon: <Database size={14}/> },
   { name: "Apache Kafka", icon: <Zap size={14}/> },
-  { name: "Llama 3 AI",  icon: <Cpu size={14}/> },
+  { name: "gpt-oss-120b",  icon: <Cpu size={14}/> },
   { name: "Java 21",     icon: <Code size={14}/> },
   { name: "AST Engine",  icon: <Terminal size={14}/> },
   { name: "Fabric8",     icon: <Globe size={14}/> },
@@ -436,7 +436,7 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           <Step num="01" icon={<Search />}     title="Detect"  desc="K8s watcher streams real V1Events — no polling, no button." />
           <Step num="02" icon={<Terminal />}    title="Extract" desc="Java AST parser finds the exact failing method in source code." />
-          <Step num="03" icon={<Cpu />}         title="Reason"  desc="Llama 3.3 70B analyzes code + crash log for root cause." />
+          <Step num="03" icon={<Cpu />}         title="Reason"  desc="gpt-oss-120b analyzes code + crash log for root cause." />
           <Step num="04" icon={<CheckCircle />} title="Heal"    desc="GitHub PR created automatically. Engineer reviews and merges." />
         </div>
       </section>

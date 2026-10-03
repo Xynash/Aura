@@ -66,7 +66,7 @@ const Dashboard = () => {
   useAuraSocket((event: any) => {
     if (event.type === "connected") {
       setWatcherStatus(`Watcher armed · ns: ${event.namespace} · ${event.nodes_online} AI nodes`);
-      setWatcherMode("LIVE_K8S");
+      setWatcherMode("WS_CONNECTED");
     }
 
     if (event.type === "incident_detected") {
@@ -166,7 +166,7 @@ const Dashboard = () => {
             </svg>
             <div className="relative w-full h-full">
               <FloatingNode icon={<Network />}     color={isIncidentActive ? "bg-red-600 shadow-red-500/50" : "bg-blue-600 shadow-blue-500/50"} label="K8s"    top="20%" left="20%" />
-              <FloatingNode icon={<Cpu />}         color="bg-purple-600 shadow-purple-500/50"  label="Llama3" top="40%" left="45%" />
+              <FloatingNode icon={<Cpu />}         color="bg-purple-600 shadow-purple-500/50"  label="gpt-oss" top="40%" left="45%" />
               <FloatingNode icon={<Code />}        color="bg-[#bef35e] shadow-[#bef35e]/50"    label="AST"    top="55%" left="75%" />
               <FloatingNode icon={<Layers />}      color="bg-indigo-600 shadow-indigo-500/50"  label="Kafka"  top="70%" left="25%" />
             </div>
@@ -219,7 +219,7 @@ const Dashboard = () => {
                 <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-8">
                   <LogStep active title="Interception" desc={`Aura captured failure in ${activeService}.`} />
                   <LogStep active title="Extraction"   desc="Source logic mapped via AST engine." />
-                  <LogStep active={!isAutoAnalyzing} title="Inference"     desc={isAutoAnalyzing ? "Llama 3.3 reasoning autonomously..." : "Llama 3.3 synthesis complete."} />
+                  <LogStep active={!isAutoAnalyzing} title="Inference"     desc={isAutoAnalyzing ? "gpt-oss-120b reasoning autonomously..." : "gpt-oss-120b synthesis complete."} />
                   <LogStep active={!isAutoAnalyzing} title="QA_Validation" desc="Safety suite verification pending." />
                 </motion.div>
               )}
@@ -244,7 +244,7 @@ const Dashboard = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <DocStep num="01" title="Detect"  desc="K8s watcher streams real V1Events." />
             <DocStep num="02" title="Extract" desc="Recursive AST source linking." />
-            <DocStep num="03" title="Reason"  desc="Llama 3.3 context-aware analysis." />
+            <DocStep num="03" title="Reason"  desc="gpt-oss-120b context-aware analysis." />
             <DocStep num="04" title="Heal"    desc="Automated hotfix via Git Pipeline." />
           </div>
         </div>
@@ -255,7 +255,7 @@ const Dashboard = () => {
             <FileSearch size={14} /> Engine_Diagnostics
           </h3>
           <div className="space-y-4 font-mono text-[10px]">
-            <DiagRow label="Watcher Mode"     value={watcherMode}                              color={watcherMode === "LIVE_K8S" ? "text-[#bef35e]" : "text-zinc-500"} />
+            <DiagRow label="Watcher Mode"     value={watcherMode}                              color={watcherMode === "WS_CONNECTED" ? "text-[#bef35e]" : "text-zinc-500"} />
             <DiagRow label="Incidents Total"  value={String(liveMetrics.incidents_detected)}   color="text-white" />
             <DiagRow label="RCA Completed"    value={String(liveMetrics.rca_completed)}        color="text-[#bef35e]" />
             <DiagRow label="PRs Created"      value={String(liveMetrics.prs_created)}          color="text-indigo-400" />

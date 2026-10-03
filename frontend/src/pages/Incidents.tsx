@@ -134,7 +134,7 @@ const Incidents = () => {
         })
       });
       const data = await res.json();
-      setChatMessages(prev => [...prev, { type: 'bot', text: data.response }]);
+      setChatMessages(prev => [...prev, { type: 'bot', text: data.response || data.error || "Request failed (rate limit?)" }]);
     } catch { console.error("Chat Error"); }
   };
 
