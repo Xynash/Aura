@@ -7,12 +7,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect , Header , Depends
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Header, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from groq import Groq
 from github import Github, Auth
 from dotenv import load_dotenv
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 load_dotenv()
 
@@ -286,6 +288,16 @@ async def lifespan(app: FastAPI):
 # ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(title="Project Aura — AIOps Engine", version="2.0.0", lifespan=lifespan)
 
+def client_ip(request: Request) -> str:
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[-1].strip()
+    return request.client.host if request.client else "unknown"
+
+limiter = Limiter(key_func=client_ip)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -321,7 +333,8 @@ def health():
     }
 
 @app.post("/analyze")
-async def analyze(req: IncidentRequest):
+@limiter.limit("10/minute")
+async def analyze(request: Request, req: IncidentRequest):
     fp = find_file(REPO_BASE_PATH, req.file_name)
     if not fp:
         raise HTTPException(404, f"'{req.file_name}' not found")
@@ -338,7 +351,8 @@ async def analyze(req: IncidentRequest):
     }
 
 @app.post("/chat")
-async def chat(req: ChatRequest):
+@limiter.limit("10/minute")
+async def chat(request: Request, req: ChatRequest):
     r, node = await call_ai(
         req.user_input,
         f"You are Aura, expert SRE AI. Context: {req.context[:500]}"
@@ -377,7 +391,8 @@ async def remediate(x_aura_key: str = Header(default="")):
     return {"status": "FAILED", "steps": ["> Error: Check GITHUB_TOKEN"]}
 
 @app.post("/simulate/{service}")
-async def simulate(service: str):
+@limiter.limit("10/minute")
+async def simulate(request: Request, service: str):
     if service not in POD_SERVICE_MAP:
         raise HTTPException(400, f"Unknown. Valid: {list(POD_SERVICE_MAP)}")
     asyncio.create_task(handle_incident(
