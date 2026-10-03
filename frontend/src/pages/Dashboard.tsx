@@ -100,7 +100,8 @@ const Dashboard = () => {
     sessionStorage.setItem('activeIncident', 'true');
     sessionStorage.setItem('targetService',  target);
     sessionStorage.removeItem('autoTriggered');
-    window.location.reload();
+    setIsIncidentActive(true);
+    setActiveService(target);
   };
 
   return (

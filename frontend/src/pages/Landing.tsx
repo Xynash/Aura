@@ -94,14 +94,14 @@ const VisitorGate = ({
   const [scanning, setScanning] = useState(false);
 
   const handleSubmit = async () => {
-    if (!name.trim() || !role) return;
+    if (!name.trim()) return;
     setScanning(true);
     const token = `AURA-${name.replace(/\s+/g, '').toUpperCase().slice(0,4)}-${Date.now().toString(36).toUpperCase()}`;
     localStorage.setItem(STORAGE_KEY, JSON.stringify({
       token, name, role, company, skipped: false, ts: Date.now()
     }));
     trackVisitor({ name, role, company, token, skipped: false });
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 600));
     onClearance(token, name);
   };
 
@@ -193,6 +193,7 @@ const VisitorGate = ({
           <div className="space-y-2">
             <label className="text-[10px] font-black uppercase text-zinc-500 tracking-widest flex items-center gap-2">
               <Shield size={10} /> Your Role
+              <span className="text-zinc-700 normal-case font-normal tracking-normal">(optional)</span>
             </label>
             <div className="grid grid-cols-2 gap-2">
               {ROLES.map(r => (
@@ -225,7 +226,7 @@ const VisitorGate = ({
           </div>
           <button
             onClick={handleSubmit}
-            disabled={!name.trim() || !role}
+            disabled={!name.trim()}
             className="w-full bg-[#bef35e] text-black py-4 rounded-2xl font-black uppercase text-xs tracking-widest shadow-[0_0_30px_rgba(190,243,94,0.2)] hover:scale-[1.02] transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             Request Clearance <ChevronRight size={16} />
