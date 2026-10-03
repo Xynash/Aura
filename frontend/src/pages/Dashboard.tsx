@@ -97,11 +97,18 @@ const Dashboard = () => {
   const triggerSimulation = () => {
     const services = ["auth-gateway", "payment-api", "inventory-node"];
     const target   = services[Math.floor(Math.random() * services.length)];
-    sessionStorage.setItem('activeIncident', 'true');
-    sessionStorage.setItem('targetService',  target);
+    sessionStorage.removeItem('autoRCA');
     sessionStorage.removeItem('autoTriggered');
-    setIsIncidentActive(true);
-    setActiveService(target);
+    fetch(`https://aura-backend-33nm.onrender.com/simulate/${target}`, { method: 'POST' })
+      .then(res => {
+        if (!res.ok) throw new Error(`simulate failed: ${res.status}`);
+        sessionStorage.setItem('activeIncident', 'true');
+        sessionStorage.setItem('targetService', target);
+        setIsIncidentActive(true);
+        setActiveService(target);
+        setIsAutoAnalyzing(true);
+      })
+      .catch(err => console.error('Simulation request failed', err));
   };
 
   return (
