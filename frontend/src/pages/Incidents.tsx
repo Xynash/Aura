@@ -8,8 +8,25 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useAuraSocket } from '../hooks/useAuraSocket';
 import { getOwnerKey } from '../lib/ownerAuth';
+
+const mdComponents: any = {
+  h1: ({ children }: any) => <h4 className="text-white font-black text-lg mt-6 mb-3">{children}</h4>,
+  h2: ({ children }: any) => <h4 className="text-white font-black text-base mt-6 mb-3 pb-2 border-b border-white/10">{children}</h4>,
+  h3: ({ children }: any) => <h4 className="text-white font-bold text-sm mt-4 mb-2">{children}</h4>,
+  p: ({ children }: any) => <p className="mb-4">{children}</p>,
+  strong: ({ children }: any) => <strong className="text-white font-bold">{children}</strong>,
+  ul: ({ children }: any) => <ul className="list-disc pl-6 mb-4 space-y-2">{children}</ul>,
+  ol: ({ children }: any) => <ol className="list-decimal pl-6 mb-4 space-y-2">{children}</ol>,
+  li: ({ children }: any) => <li>{children}</li>,
+  pre: ({ children }: any) => <pre className="bg-black/60 border border-white/10 rounded-xl p-5 my-4 text-xs font-mono text-[#bef35e]/80 whitespace-pre-wrap break-words">{children}</pre>,
+  code: ({ children }: any) => <code className="font-mono text-[#bef35e]/90">{children}</code>,
+  table: ({ children }: any) => <div className="overflow-x-auto my-4"><table className="w-full text-left text-xs border-collapse">{children}</table></div>,
+  th: ({ children }: any) => <th className="border border-white/10 bg-white/5 px-3 py-2 text-white font-bold">{children}</th>,
+  td: ({ children }: any) => <td className="border border-white/10 px-3 py-2 align-top">{children}</td>,
+};
 
 const Incidents = () => {
   const [analysisStep,        setAnalysisStep]        = useState(0);
@@ -280,8 +297,8 @@ const Incidents = () => {
                     )}
                   </div>
                 </div>
-                <div className="prose prose-invert max-w-none font-sans text-zinc-300 leading-relaxed overflow-y-auto max-h-[500px] pr-6 custom-scrollbar text-lg">
-                  <ReactMarkdown>{analysisData?.root_cause_analysis}</ReactMarkdown>
+                <div className="prose prose-invert max-w-none font-sans text-zinc-300 leading-relaxed overflow-y-auto max-h-[500px] pr-6 custom-scrollbar text-sm">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{analysisData?.root_cause_analysis}</ReactMarkdown>
                 </div>
               </motion.div>
             )}
