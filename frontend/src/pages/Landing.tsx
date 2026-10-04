@@ -12,12 +12,12 @@ const STORAGE_KEY = 'aura_visitor_v1';
 
 const techStack = [
   { name: "Kubernetes",   icon: <Database size={14}/> },
-  { name: "Apache Kafka", icon: <Zap size={14}/> },
+  { name: "FastAPI", icon: <Zap size={14}/> },
   { name: "gpt-oss-120b",  icon: <Cpu size={14}/> },
-  { name: "Java 21",     icon: <Code size={14}/> },
+  { name: "React + TypeScript",     icon: <Code size={14}/> },
   { name: "AST Engine",  icon: <Terminal size={14}/> },
-  { name: "Fabric8",     icon: <Globe size={14}/> },
-  { name: "Spring Boot", icon: <Activity size={14}/> }
+  { name: "PyGithub",     icon: <Globe size={14}/> },
+  { name: "WebSocket", icon: <Activity size={14}/> }
 ];
 
 const ROLES = [

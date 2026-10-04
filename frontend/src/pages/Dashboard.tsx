@@ -145,9 +145,9 @@ const Dashboard = () => {
 
       {/* ── 1. TOP METRICS ── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8 relative z-10">
-        <MetricCard label="Reasoning Cycles"   value={`${Math.floor(metrics.cycles)}/s`}              icon={<Cpu />} />
+        <MetricCard label="RCA Completed"   value={String(liveMetrics.rca_completed)}              icon={<Cpu />} />
         <MetricCard label="Incidents Detected" value={String(liveMetrics.incidents_detected)}          icon={<Activity />} color={liveMetrics.incidents_detected > 0 ? "text-red-400" : "text-white"} />
-        <MetricCard label="Cluster Latency"    value={`< ${metrics.latency.toFixed(2)}s`}              icon={<Zap />}       color={isIncidentActive ? "text-red-500" : "text-[#bef35e]"} />
+        <MetricCard label="PRs Created"    value={String(liveMetrics.prs_created)}              icon={<Zap />}       color={isIncidentActive ? "text-red-500" : "text-[#bef35e]"} />
         <MetricCard label="QA Gatekeeper"      value={isIncidentActive ? "Action Required" : "Hardened"} icon={<ShieldCheck />} color={isIncidentActive ? "text-orange-500" : "text-indigo-400"} />
       </div>
 
@@ -175,7 +175,7 @@ const Dashboard = () => {
               <FloatingNode icon={<Network />}     color={isIncidentActive ? "bg-red-600 shadow-red-500/50" : "bg-blue-600 shadow-blue-500/50"} label="K8s"    top="20%" left="20%" />
               <FloatingNode icon={<Cpu />}         color="bg-purple-600 shadow-purple-500/50"  label="gpt-oss" top="40%" left="45%" />
               <FloatingNode icon={<Code />}        color="bg-[#bef35e] shadow-[#bef35e]/50"    label="AST"    top="55%" left="75%" />
-              <FloatingNode icon={<Layers />}      color="bg-indigo-600 shadow-indigo-500/50"  label="Kafka"  top="70%" left="25%" />
+              <FloatingNode icon={<Layers />}      color="bg-indigo-600 shadow-indigo-500/50"  label="WebSocket"  top="70%" left="25%" />
             </div>
           </div>
 
