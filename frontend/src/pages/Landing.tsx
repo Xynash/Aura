@@ -442,6 +442,142 @@ const Landing = ({ setSystemStatus, systemStatus }: any) => {
       </section>
 
       {/* ── DEMO SECTION ── */}
+      {/* WHY AURA */}
+      <section id="why-aura" className="max-w-6xl mx-auto px-6 md:px-10 py-28 border-b border-white/5">
+        <motion.div
+          initial={{ opacity: 0, y: 24 }} whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }} transition={{ duration: 0.6 }}
+          className="text-center mb-20"
+        >
+          <p className="text-[#bef35e] font-bold text-xs uppercase tracking-[0.4em] mb-4">Why it matters</p>
+          <h2 className="text-5xl md:text-6xl font-black tracking-tighter mb-5 text-white">Why Aura?</h2>
+          <p className="text-zinc-400 max-w-2xl mx-auto text-lg leading-relaxed">
+            An alert tells you a pod crashed. It does not tell you where in the code to look. That gap is where incident time goes.
+          </p>
+        </motion.div>
+
+        {/* Before / After */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-24">
+          <motion.div
+            initial={{ opacity: 0, x: -30 }} whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }} transition={{ duration: 0.6 }}
+            className="aura-card p-8 md:p-10"
+          >
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-red-400 mb-2">Without source context</p>
+            <h3 className="text-2xl font-black tracking-tighter text-white mb-8">Diagnosis by hand</h3>
+            <div className="relative pl-8">
+              <div className="absolute left-[11px] top-2 bottom-2 w-px bg-gradient-to-b from-red-500/60 to-red-500/10" />
+              {["Alert fires", "Pull pod logs", "Work out the service and commit", "Search the repo for the method", "Read the code and form a theory"].map((t, i) => (
+                <motion.div
+                  key={t}
+                  initial={{ opacity: 0, x: -12 }} whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true }} transition={{ delay: 0.15 * i, duration: 0.4 }}
+                  className="relative flex items-center gap-4 mb-6 last:mb-0"
+                >
+                  <span className="absolute -left-8 w-6 h-6 rounded-full bg-black border border-red-500/50 text-[10px] font-black text-red-400 flex items-center justify-center">{i + 1}</span>
+                  <span className="text-zinc-300 text-sm">{t}</span>
+                </motion.div>
+              ))}
+            </div>
+            <p className="text-zinc-600 text-xs font-mono mt-8">Every step is manual, and each one needs context from a different place.</p>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, x: 30 }} whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }} transition={{ duration: 0.6 }}
+            className="aura-card p-8 md:p-10 border-[#bef35e]/20"
+          >
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#bef35e] mb-2">With Aura</p>
+            <h3 className="text-2xl font-black tracking-tighter text-white mb-8">A starting point, ready for review</h3>
+            <div className="relative pl-8">
+              <div className="absolute left-[11px] top-2 bottom-2 w-px bg-[#bef35e]/20" />
+              <motion.div
+                animate={{ top: ['0%', '100%'] }}
+                transition={{ duration: 3, repeat: Infinity, ease: 'linear' }}
+                className="absolute left-[7px] w-2 h-2 rounded-full bg-[#bef35e] shadow-[0_0_14px_#bef35e]"
+              />
+              {[
+                { t: "Event detected", d: "The watcher sees the pod failure", icon: <Activity size={12} /> },
+                { t: "Source linked", d: "The failing method is found with AST parsing", icon: <Code size={12} /> },
+                { t: "First-pass analysis", d: "An LLM explains the likely cause", icon: <Cpu size={12} /> },
+                { t: "Engineer reviews", d: "A person decides what to do with it", icon: <CheckCircle size={12} /> },
+              ].map((x, i) => (
+                <motion.div
+                  key={x.t}
+                  initial={{ opacity: 0, x: 12 }} whileInView={{ opacity: 1, x: 0 }}
+                  viewport={{ once: true }} transition={{ delay: 0.2 * i, duration: 0.4 }}
+                  className="relative flex items-start gap-4 mb-7 last:mb-0"
+                >
+                  <span className="absolute -left-8 w-6 h-6 rounded-full bg-[#bef35e] text-black flex items-center justify-center">{x.icon}</span>
+                  <div>
+                    <p className="text-white text-sm font-bold">{x.t}</p>
+                    <p className="text-zinc-500 text-xs mt-0.5">{x.d}</p>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+            <p className="text-zinc-600 text-xs font-mono mt-8">Prototype: the output is a suggestion for an engineer, not an automatic fix.</p>
+          </motion.div>
+        </div>
+
+        {/* Audience */}
+        <div className="text-center mb-12">
+          <p className="text-[#bef35e] font-bold text-xs uppercase tracking-[0.4em] mb-3">Who needs it most</p>
+          <h3 className="text-3xl md:text-4xl font-black tracking-tighter text-white">Teams that lose time to the first question</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-24">
+          {[
+            { icon: <Terminal size={22} />, title: "On-call engineers", moment: "A page arrives at 3 AM and the service is not yours.", gives: "A likely method and a plain-language explanation to start from." },
+            { icon: <Search size={22} />, title: "Teams without an SRE", moment: "Nobody on the team specialises in reading cluster events.", gives: "A structured first analysis instead of raw logs read cold." },
+            { icon: <Globe size={22} />, title: "Microservice teams", moment: "Dozens of services, and nobody remembers every codebase.", gives: "The event linked to the source, so there is less context switching." },
+          ].map((a, i) => (
+            <motion.div
+              key={a.title}
+              initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }} transition={{ delay: 0.12 * i, duration: 0.5 }}
+              whileHover={{ y: -6 }}
+              className="aura-card p-8 flex flex-col group transition-colors hover:bg-white/[0.04]"
+            >
+              <div className="w-12 h-12 rounded-xl bg-[#bef35e]/10 text-[#bef35e] flex items-center justify-center mb-6 group-hover:bg-[#bef35e] group-hover:text-black transition-all">
+                {a.icon}
+              </div>
+              <h4 className="text-xl font-black tracking-tighter text-white mb-4 uppercase">{a.title}</h4>
+              <p className="text-zinc-500 text-sm italic leading-relaxed mb-5">"{a.moment}"</p>
+              <div className="mt-auto pt-5 border-t border-white/5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-[#bef35e] mb-2">Aura gives them</p>
+                <p className="text-zinc-300 text-sm leading-relaxed">{a.gives}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Relevance */}
+        <div className="text-center mb-12">
+          <p className="text-[#bef35e] font-bold text-xs uppercase tracking-[0.4em] mb-3">Why now</p>
+          <h3 className="text-3xl md:text-4xl font-black tracking-tighter text-white">Three things have changed</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {[
+            { icon: <Database size={18} />, t: "More services", d: "Systems are split into more pieces than one person can hold in their head." },
+            { icon: <Zap size={18} />, t: "Faster expectations", d: "Teams are expected to recover quickly, and diagnosis is the slow part." },
+            { icon: <Cpu size={18} />, t: "LLMs can read code", d: "Given the right method as context, a model can give a useful first explanation." },
+          ].map((r, i) => (
+            <motion.div
+              key={r.t}
+              initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }} transition={{ delay: 0.1 * i, duration: 0.45 }}
+              className="rounded-2xl border border-white/10 bg-white/[0.02] p-6 flex gap-4 items-start"
+            >
+              <div className="shrink-0 w-10 h-10 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center">{r.icon}</div>
+              <div>
+                <p className="text-white font-bold text-sm mb-1">{r.t}</p>
+                <p className="text-zinc-500 text-xs leading-relaxed">{r.d}</p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
       <section id="system-demo" className="max-w-7xl mx-auto px-10 py-32 mb-40">
         <div className="text-center mb-16">
           <h2 className="text-5xl font-black tracking-tighter mb-4 text-white">
