@@ -169,23 +169,44 @@ async def call_ai(prompt: str, system: str = "You are a specialized SRE agent. B
 # ── GitHub PR ─────────────────────────────────────────────────────────────────
 def create_pr(code: str, service_file: str = "AuthService.java") -> Optional[str]:
     try:
-        repo   = gh_client.get_repo(TARGET_REPO)
-        branch = f"aura-fix-{uuid.uuid4().hex[:6]}"
-        repo.create_git_ref(f"refs/heads/{branch}", repo.get_git_ref("heads/main").object.sha)
-        svc  = service_file.replace(".java", "")
-        path = f"src/main/java/io/aura/{svc.lower()}/{service_file}"
-        try:    contents = repo.get_contents(path, ref="main")
-        except: contents = repo.get_contents("src/main/java/io/aura/AuthService.java", ref="main")
-        repo.update_file(contents.path, f"fix({svc}): Aura autonomous hotfix", code, contents.sha, branch=branch)
+        repo = gh_client.get_repo(TARGET_REPO)
+        base = repo.default_branch
+        svc = service_file.replace(".java", "")
+        tree = repo.get_git_tree(base, recursive=True).tree
+        matches = [
+            t.path for t in tree
+            if t.type == "blob" and (t.path == service_file or t.path.endswith("/" + service_file))
+        ]
+        if len(matches) != 1:
+            print(f"GitHub: expected exactly 1 path for {service_file}, found {len(matches)}. No PR created.")
+            return None
+        contents = repo.get_contents(matches[0], ref=base)
+        stamp = now().strftime("%Y%m%d-%H%M%S")
+        branch = f"aura/fix-{svc.lower()}-{stamp}"
+        repo.create_git_ref(f"refs/heads/{branch}", repo.get_git_ref(f"heads/{base}").object.sha)
+        repo.update_file(
+            contents.path,
+            f"fix({svc}): Aura suggested patch (needs review)",
+            code, contents.sha, branch=branch,
+        )
+        body = (
+            f"**Service:** `{service_file}`\n"
+            f"**File:** `{contents.path}`\n\n"
+            "Source located with AST parsing; analysis by gpt-oss-120b (Groq).\n\n"
+            "**Please read before merging:**\n"
+            "- The patch content is currently a fixed example fix, not generated from this incident's analysis.\n"
+            "- A pattern-based safety scan was applied. It is not a compile, test or security review.\n"
+            "- Aura did not compile or test this change.\n"
+            "- Needs engineer review. Aura never merges."
+        )
         pr = repo.create_pull(
-            title=f"🚀 Aura: Hotfix — {svc}",
-            body=f"**Service:** `{service_file}`\n\nLocalized via AST · Analyzed by Llama 3.3 · QA validated.\n\n> Awaiting SRE review.",
-            head=branch, base="main"
+            title=f"Aura: suggested fix for {svc}",
+            body=body, head=branch, base=base,
         )
         aura_metrics["prs_created"] += 1
         return pr.html_url
     except Exception as e:
-        print(f"⚠️  GitHub error: {e}")
+        print(f"GitHub error: {e}")
         return None
 
 # ── Incident Pipeline ─────────────────────────────────────────────────────────
