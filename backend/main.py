@@ -210,6 +210,51 @@ def create_pr(code: str, service_file: str = "AuthService.java") -> Optional[str
         return None
 
 # ── Incident Pipeline ─────────────────────────────────────────────────────────
+patches: dict[str, dict] = {}
+
+def extract_java_block(text: str) -> Optional[str]:
+    m = re.search(r"```(?:java)?\s*\n(.*?)```", text or "", re.S)
+    return (m.group(1).strip("\n") + "\n") if m else None
+
+async def ai_patch_call(prompt: str, system: str):
+    last_err = None
+    for node in AI_NODES:
+        try:
+            client = Groq(api_key=node["key"])
+            r = await asyncio.to_thread(
+                client.chat.completions.create,
+                model="openai/gpt-oss-120b",
+                messages=[{"role": "system", "content": system}, {"role": "user", "content": prompt}],
+                temperature=0.1, max_tokens=6000,
+            )
+            return r.choices[0].message.content, node["name"], r.choices[0].finish_reason
+        except Exception as e:
+            aura_metrics["ai_failovers"] += 1
+            last_err = e
+    raise RuntimeError(f"All AI nodes failed: {last_err}")
+
+async def generate_patch(original: str, analysis: str, file_name: str) -> dict:
+    system = (
+        "You are a careful Java engineer. Return the COMPLETE corrected file in a single ```java code block. "
+        "Fix only the bug described. Keep everything else exactly as it is, including comments, logging and formatting."
+    )
+    prompt = f"File: {file_name}\n\nOriginal file:\n```java\n{original}\n```\n\nAnalysis of the failure:\n{analysis}\n"
+    try:
+        text, node, finish = await ai_patch_call(prompt, system)
+    except Exception as e:
+        return {"ok": False, "reason": f"AI call failed: {e}"}
+    if finish == "length":
+        return {"ok": False, "reason": "AI output was truncated"}
+    code = extract_java_block(text)
+    if not code:
+        return {"ok": False, "reason": "No code block in AI output"}
+    if len(code) < 0.6 * len(original):
+        return {"ok": False, "reason": "Patch is much shorter than the original file"}
+    qa = qa_validate(code)
+    if not qa["passed"]:
+        return {"ok": False, "reason": qa["report"], "qa": qa}
+    return {"ok": True, "code": code, "qa": qa, "node": node}
+
 async def handle_incident(pod: str, reason: str, message: str):
     if not should_trigger(pod):
         print(f"⏭️  Debounced: {pod}")
@@ -248,6 +293,26 @@ async def handle_incident(pod: str, reason: str, message: str):
         "method": method, "source_file": file_name,
         "active_node": node, "timestamp": now().isoformat(), "status": "complete"
     })
+
+    if fp and node != "NONE":
+        try:
+            original = open(fp, encoding="utf-8").read()
+        except Exception:
+            original = ""
+        if original:
+            res = await generate_patch(original, analysis, file_name)
+            incident_id = f"{pod}-{now().strftime('%Y%m%d%H%M%S')}"
+            if res["ok"]:
+                patches[incident_id] = {
+                    "pod": pod, "file": file_name, "method": method, "reason": reason,
+                    "code": res["code"], "qa": res["qa"], "node": res["node"], "pr_url": None,
+                }
+                if len(patches) > 20:
+                    patches.pop(next(iter(patches)))
+            await manager.broadcast({
+                "type": "patch_ready", "incident_id": incident_id, "pod": pod,
+                "ok": res["ok"], "reason": res.get("reason", ""), "qa": res.get("qa"),
+            })
 
     incident_history.append({
         "pod": pod, "reason": reason, "file": file_name,
