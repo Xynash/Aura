@@ -30,6 +30,7 @@ const mdComponents: any = {
 
 const Incidents = () => {
   const [analysisStep,        setAnalysisStep]        = useState(0);
+  const [incidentId, setIncidentId] = useState<string>(sessionStorage.getItem('incident_id') || '');
   const [isErrorActive,       setIsErrorActive]       = useState(false);
   const [analysisData,        setAnalysisData]        = useState<any>(null);
   const [chatInput,           setChatInput]           = useState('');
@@ -43,6 +44,16 @@ const Incidents = () => {
 
   // ── WebSocket ─────────────────────────────────────────────────────────────
   useAuraSocket((event: any) => {
+    if (event.type === "patch_ready") {
+      if (event.ok && event.incident_id) {
+        setIncidentId(event.incident_id);
+        sessionStorage.setItem('incident_id', event.incident_id);
+      } else {
+        setIncidentId('');
+        sessionStorage.removeItem('incident_id');
+      }
+    }
+
     if (event.type === "incident_detected") {
       setIsLiveMode(true);
       setIsErrorActive(true);
@@ -162,7 +173,8 @@ const Incidents = () => {
     try {
       const res  = await fetch("https://aura-backend-33nm.onrender.com/remediate", {
         method: "POST",
-        headers: { "X-Aura-Key": getOwnerKey() },
+        headers: { "X-Aura-Key": getOwnerKey(), "Content-Type": "application/json" },
+        body: JSON.stringify({ incident_id: incidentId }),
       });
       const data = await res.json();
 
@@ -363,7 +375,7 @@ const Incidents = () => {
                     {!remediationComplete ? (
                       <button
                         onClick={handleRemediation}
-                        disabled={isRemediating}
+                        disabled={isRemediating || !incidentId}
                         className="w-full bg-[#bef35e] text-black py-5 rounded-2xl font-black uppercase text-xs shadow-[0_0_50px_rgba(190,243,94,0.3)] hover:scale-[1.01] transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                       >
                         {isRemediating ? "Initializing GitHub Node..." : "Apply Hotfix & Auto-Heal ⚡"}
